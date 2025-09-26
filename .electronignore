@@ -1,0 +1,40 @@
+# Development files
+src/
+node_modules/
+.git/
+.vscode/
+.env
+*.log
+
+# Build artifacts
+dist/
+build/
+
+# Temporary files
+temp_uploads/
+generated_pdfs/
+output_*/
+*.tmp
+
+# Documentation
+*.md
+HOW_TO_USE.md
+README_PYTHON_SETUP.md
+
+# Test files
+test_*
+*_test.py
+
+# IDE files
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
