@@ -12,12 +12,22 @@ import base64
 from pathlib import Path
 import sib_api_v3_sdk
 from sib_api_v3_sdk.rest import ApiException
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Brevo Configuration
+BREVO_API_KEY = os.getenv('BREVO_API_KEY')
 SENDER_EMAIL = "arrears@niclmauritius.site"
 SENDER_NAME = "NIC Life Insurance Mauritius"
 REPLY_TO_EMAIL = "nicarlife@nicl.mu"
 REPLY_TO_NAME = "NIC Life Insurance"
+
+# Validate that API key is loaded
+if not BREVO_API_KEY:
+    print("[ERROR] BREVO_API_KEY not found in environment variables. Please check your .env file.")
+    sys.exit(1)
 
 def setup_brevo_client():
     """Setup Brevo API client"""

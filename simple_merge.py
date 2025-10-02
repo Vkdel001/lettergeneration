@@ -36,13 +36,22 @@ def convert_pdf_to_images_and_merge():
         print("Please ensure all form PDFs are in the current directory.")
         return
     
-    # Find all generated renewal PDFs
+    # Find all generated renewal PDFs - check for dual folder structure
     output_folder = "output_renewals"
     if not os.path.exists(output_folder):
         print(f"❌ Error: {output_folder} folder not found!")
         return
     
-    pdf_files = glob.glob(f"{output_folder}/*.pdf")
+    # Check if using new dual folder structure
+    unprotected_folder = os.path.join(output_folder, "unprotected")
+    if os.path.exists(unprotected_folder):
+        print(f"📁 Using unprotected PDFs from: {unprotected_folder}")
+        pdf_files = glob.glob(f"{unprotected_folder}/*.pdf")
+        working_folder = unprotected_folder
+    else:
+        print(f"📁 Using PDFs from: {output_folder}")
+        pdf_files = glob.glob(f"{output_folder}/*.pdf")
+        working_folder = output_folder
     
     if not pdf_files:
         print(f"❌ No PDF files found in {output_folder}")

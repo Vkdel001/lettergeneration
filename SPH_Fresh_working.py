@@ -61,7 +61,7 @@ except Exception as e:
     print(f"[ERROR] Error reading Excel file: {str(e)}")
     sys.exit(1)
 
-# Create folders to store generated PDFs - dual folder structure
+# Create a folder to store generated PDFs - use dynamic folder name
 import sys
 output_folder = "output_letters"  # Default folder
 
@@ -76,16 +76,8 @@ if len(sys.argv) > 1:
             print(f"[DEBUG] Found --output argument: {output_folder}")
             break
 
-# Create main folder and subfolders
 os.makedirs(output_folder, exist_ok=True)
-protected_folder = os.path.join(output_folder, "protected")
-unprotected_folder = os.path.join(output_folder, "unprotected")
-os.makedirs(protected_folder, exist_ok=True)
-os.makedirs(unprotected_folder, exist_ok=True)
-
 print(f"[INFO] Using output folder: {output_folder}")
-print(f"[INFO] Protected PDFs folder: {protected_folder}")
-print(f"[INFO] Unprotected PDFs folder: {unprotected_folder}")
 
 # Define custom paragraph styles explicitly
 styles = {}
@@ -329,11 +321,9 @@ for index, row in df.iterrows():
         print(f"⚠️ Error generating QR for {name}: {str(e)}")
         continue
 
-    # Create PDF filenames for both protected and unprotected versions
-    protected_pdf_filename = f"{protected_folder}/{safe_policy}_{safe_name}.pdf"
-    unprotected_pdf_filename = f"{unprotected_folder}/{safe_policy}_{safe_name}.pdf"
-    # Create unprotected PDF first
-    c = canvas.Canvas(unprotected_pdf_filename, pagesize=A4)
+    # Create a PDF for the current policyholder
+    pdf_filename = f"{output_folder}/{safe_policy}_{safe_name}.pdf"
+    c = canvas.Canvas(pdf_filename, pagesize=A4)
     width, height = A4
     margin = 50
     bottom_margin = 60  # Increased for pre-printed stationery address space
@@ -381,7 +371,7 @@ for index, row in df.iterrows():
     y_pos -= subject.height + 4
 
     # Add new introductory paragraph (matching new format)
-    intro_text = f"At NIC, we value the trust you have placed in us to protect what matters most— your financial future & that of your loved ones. We are writing to remind you that your life insurance policy shows a <font name='Cambria-Bold'>premium amount in arrears as shown below:</font>"
+    intro_text = f"At NIC, we value the trust you have placed in us to protect what matters most—your life, your loved ones and your financial future. We are writing to remind you that your life insurance policy shows a <font name='Cambria-Bold'>premium amount in arrears as per below:</font>"
     intro = Paragraph(intro_text, styles['BodyText'])
     intro.wrapOn(c, width - 2 * margin, height)
     intro.drawOn(c, margin, y_pos - intro.height)
@@ -422,7 +412,7 @@ for index, row in df.iterrows():
     y_pos -= table_height + 10  # Increased breathing space after table
 
     # Add new body content (matching new format)
-    text1 = "Keeping your policy up to date is not only about making a payment. It ensures:"
+    text1 = "Keeping your policy up to date is not just about making a payment—it is about ensuring:"
     para1 = Paragraph(text1, styles['BodyText'])
     para1.wrapOn(c, width - 2 * margin, height)
     para1.drawOn(c, margin, y_pos - para1.height)
@@ -448,7 +438,7 @@ for index, row in df.iterrows():
     y_pos -= para2.height + 3
 
     # Point 2: Growth of Your Savings
-    text3 = "<font name='Cambria-Bold'>Growth of Your Savings:</font> Every premium contributes to building long-term savings that support your financial goals—be it retirement, children's education, funding your dream project, or financial security."
+    text3 = "<font name='Cambria-Bold'>Growth of Your Savings:</font> Every premium contributes to building long-term savings that support your goals—be it retirement, children's education, funding your dream project, or financial security."
     para3 = Paragraph(text3, styles['BodyText'])
     para3.wrapOn(c, width - 2 * margin - 25, height)
     # Position checkmark to align with first line of text (lower position)
@@ -463,9 +453,15 @@ for index, row in df.iterrows():
     # Position checkmark to align with first line of text (lower position)
     draw_checkmark(c, margin + 10, y_pos - 8, 8)
     para4.drawOn(c, margin + 25, y_pos - para4.height)
-    y_pos -= para4.height + 8  # Breathing space before next paragraph
+    y_pos -= para4.height + 4
 
-    text6 = "Accordingly we encourage you to settle your outstanding premium at the earliest opportunity to ensure uninterrupted cover and continued growth of your savings and by acting now, you avoid the risk of:"
+    text5 = "In general, people feel greater regret when protection is lost compared to the effort required to maintain it. In the same way, allowing your policy to lapse can undo years of careful planning, while a timely action today secures lasting peace of mind for you and your family."
+    para5 = Paragraph(text5, styles['BodyText'])
+    para5.wrapOn(c, width - 2 * margin, height)
+    para5.drawOn(c, margin, y_pos - para5.height)
+    y_pos -= para5.height + 8  # Increased breathing space after regret paragraph
+
+    text6 = "We encourage you to settle your outstanding premium at the earliest opportunity to ensure uninterrupted cover and continued growth of your savings. By acting now, you avoid the risk of:"
     para6 = Paragraph(text6, styles['BodyText'])
     para6.wrapOn(c, width - 2 * margin, height)
     para6.drawOn(c, margin, y_pos - para6.height)
@@ -491,7 +487,7 @@ for index, row in df.iterrows():
     y_pos -= para9.height + 6
 
     # Add new line for payment facilities (not a bullet point)
-    text_payment_facilities = "Should you wish to avail of a facility to settle your arrears, kindly contact us on +230 602 3315 for assistance."
+    text_payment_facilities = "Should you wish to avail a facility to settle your arrears, kindly contact us on +230 602 3315 for assistance."
     para_payment_facilities = Paragraph(text_payment_facilities, styles['BodyText'])
     para_payment_facilities.wrapOn(c, width - 2 * margin, height)
     para_payment_facilities.drawOn(c, margin, y_pos - para_payment_facilities.height)
@@ -565,32 +561,26 @@ for index, row in df.iterrows():
     # Add NIC tagline (with more breathing space)
     tagline_y_pos = footer_start_y - footer1.height - 6  # Increased breathing space before tagline
     tagline = Paragraph(
-        "We appreciate your commitment for protection and financial wellbeing<br/><font name='Cambria-Bold'>NIC - Serving you, Serving the Nation</font>",
+        "With appreciation for your commitment to protection and financial wellbeing<br/><font name='Cambria-Bold'>NIC - Serving you, Serving the Nation</font>",
         styles['BodyText']
     )
     tagline.wrapOn(c, width - 2 * margin, height)
     tagline.drawOn(c, margin, tagline_y_pos - tagline.height)
-    
-    # Add computer generated statement in grey color
-    computer_generated_y_pos = tagline_y_pos - tagline.height - 8
-    computer_generated = Paragraph(
-        "<font color='grey'>This is a computer generated statement and requires no signature</font>",
-        styles['BodyText']
-    )
-    computer_generated.wrapOn(c, width - 2 * margin, height)
-    computer_generated.drawOn(c, margin, computer_generated_y_pos - computer_generated.height)
 
-    # Save the unprotected PDF
+    # Save the PDF
     c.save()
-    print(f"✅ Unprotected PDF saved: {unprotected_pdf_filename}")
 
-    # Create password-protected version using customer's NIC
+    # Add password protection using customer's NIC
     try:
         if nic and str(nic).strip():
             password = str(nic).strip()
             
+            # Create password-protected version
+            temp_filename = pdf_filename.replace('.pdf', '_temp.pdf')
+            os.rename(pdf_filename, temp_filename)
+            
             # Read the unprotected PDF
-            with open(unprotected_pdf_filename, 'rb') as input_file:
+            with open(temp_filename, 'rb') as input_file:
                 reader = PdfFileReader(input_file)
                 writer = PdfFileWriter()
                 
@@ -601,32 +591,26 @@ for index, row in df.iterrows():
                 # Encrypt with NIC as password
                 writer.encrypt(password)
                 
-                # Write password-protected PDF to protected folder
-                with open(protected_pdf_filename, 'wb') as output_file:
+                # Write password-protected PDF
+                with open(pdf_filename, 'wb') as output_file:
                     writer.write(output_file)
             
-            print(f"🔒 Protected PDF saved with NIC password: {protected_pdf_filename}")
+            # Remove temporary file
+            os.remove(temp_filename)
+            print(f"🔒 PDF password-protected with NIC: {password}")
         else:
-            # If no NIC, copy unprotected version to protected folder
-            import shutil
-            shutil.copy2(unprotected_pdf_filename, protected_pdf_filename)
-            print(f"⚠️ No NIC found for {name}, copied unprotected PDF to both folders")
+            print(f"⚠️ No NIC found for {name}, PDF saved without password protection")
     except Exception as e:
-        print(f"⚠️ Failed to create protected PDF: {str(e)}")
-        # If password protection fails, copy unprotected version
-        try:
-            import shutil
-            shutil.copy2(unprotected_pdf_filename, protected_pdf_filename)
-            print(f"📄 Copied unprotected PDF to protected folder as fallback")
-        except Exception as copy_error:
-            print(f"❌ Failed to copy PDF: {str(copy_error)}")
+        print(f"⚠️ Failed to add password protection: {str(e)}")
+        # If password protection fails, ensure we still have the original PDF
+        temp_filename = pdf_filename.replace('.pdf', '_temp.pdf')
+        if os.path.exists(temp_filename):
+            os.rename(temp_filename, pdf_filename)
 
     # Clean up QR code file
     if os.path.exists(qr_filename):
         os.remove(qr_filename)
 
-    print(f"✅ PDFs generated successfully for {name}")
-    print(f"   📁 Protected: {protected_pdf_filename}")
-    print(f"   📁 Unprotected: {unprotected_pdf_filename}")
+    print(f"✅ PDF generated successfully for {name}")
 
 print(f"🎉 Script completed. Processed {len(df)} rows total.")

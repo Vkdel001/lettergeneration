@@ -62,7 +62,7 @@ def main():
         # Execute the template script with output folder argument
         print(f"Executing template: {args.template}")
         result = subprocess.run([sys.executable, args.template, '--output', args.output], 
-                              capture_output=True, text=True, timeout=300)
+                              capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=300)
         
         if result.returncode != 0:
             print(f"Template execution failed with return code {result.returncode}", file=sys.stderr)
@@ -73,16 +73,32 @@ def main():
         print("Template executed successfully")
         print(f"STDOUT: {result.stdout}")
         
-        # Check if PDFs were generated in the target output directory
+        # Check if PDFs were generated in the target output directory (including subfolders)
         moved_files = 0
         if os.path.exists(args.output):
+            # Count PDFs in main folder
             pdf_files = [f for f in os.listdir(args.output) if f.endswith('.pdf')]
             moved_files = len(pdf_files)
-            print(f"Found {moved_files} PDF files in target directory: {args.output}")
+            
+            # Count PDFs in protected subfolder
+            protected_path = os.path.join(args.output, 'protected')
+            if os.path.exists(protected_path):
+                protected_pdfs = [f for f in os.listdir(protected_path) if f.endswith('.pdf')]
+                moved_files += len(protected_pdfs)
+                print(f"Found {len(protected_pdfs)} PDFs in protected folder")
+            
+            # Count PDFs in unprotected subfolder
+            unprotected_path = os.path.join(args.output, 'unprotected')
+            if os.path.exists(unprotected_path):
+                unprotected_pdfs = [f for f in os.listdir(unprotected_path) if f.endswith('.pdf')]
+                moved_files += len(unprotected_pdfs)
+                print(f"Found {len(unprotected_pdfs)} PDFs in unprotected folder")
+            
+            print(f"Found {moved_files} total PDF files in directory: {args.output}")
         else:
             print(f"Warning: Target output directory not found: {args.output}")
         
-        print(f"Successfully moved {moved_files} PDF files to {args.output}")
+        print(f"Successfully generated {moved_files} PDF files in {args.output}")
         
     except subprocess.TimeoutExpired:
         print("Template execution timed out (5 minutes)", file=sys.stderr)

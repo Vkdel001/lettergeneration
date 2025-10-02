@@ -4,9 +4,25 @@
 
 # Generated PDF files
 *.pdf
+
+# All output folders containing generated PDFs
+output_*/
+generated_pdfs/
+temp_uploads/
+
+# Specific output folders (for clarity)
 output_motor/
 output_letters/
-output_*/
+output_letters_company/
+output_renewals/
+output_sph_*/
+output_JPH_*/
+output_company_*/
+output_test_*/
+
+# Protected and unprotected subfolders
+*/protected/
+*/unprotected/
 
 dist/
 dist-electron/

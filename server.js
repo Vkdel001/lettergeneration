@@ -29,7 +29,7 @@ const storage = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    cb(null, 'Generic_template.xlsx');
+    cb(null, 'Generic_Template.xlsx');
   }
 });
 
@@ -58,11 +58,20 @@ app.post('/api/generate-pdfs', upload.single('excelFile'), (req, res) => {
   console.log(`Input file: ${inputFile}`);
   console.log(`Output folder: ${outputFolder}`);
 
-  // Clear output directory (with error handling for locked files)
+  // Clear output directory (with error handling for locked files and folders)
   if (fs.existsSync(outputFolder)) {
     fs.readdirSync(outputFolder).forEach(file => {
       try {
-        fs.unlinkSync(path.join(outputFolder, file));
+        const filePath = path.join(outputFolder, file);
+        const stat = fs.statSync(filePath);
+        
+        if (stat.isDirectory()) {
+          // Remove directory recursively
+          fs.rmSync(filePath, { recursive: true, force: true });
+        } else {
+          // Remove file
+          fs.unlinkSync(filePath);
+        }
       } catch (error) {
         if (error.code === 'EBUSY' || error.code === 'ENOENT') {
           console.warn(`Warning: Could not delete ${file} (file may be open in another application)`);
@@ -114,14 +123,49 @@ app.post('/api/generate-pdfs', upload.single('excelFile'), (req, res) => {
     fs.unlinkSync(inputFile);
 
     if (code === 0) {
-      // Get list of generated PDF files
-      const pdfFiles = fs.readdirSync(outputFolder)
-        .filter(file => file.endsWith('.pdf'))
-        .map(file => ({
-          filename: file,
-          path: path.join(outputFolder, file),
-          size: fs.statSync(path.join(outputFolder, file)).size
-        }));
+      // Get list of generated PDF files (including from protected/unprotected subfolders)
+      let pdfFiles = [];
+      
+      // Check main folder
+      if (fs.existsSync(outputFolder)) {
+        const mainPdfs = fs.readdirSync(outputFolder)
+          .filter(file => file.endsWith('.pdf'))
+          .map(file => ({
+            filename: file,
+            path: path.join(outputFolder, file),
+            size: fs.statSync(path.join(outputFolder, file)).size,
+            location: 'main'
+          }));
+        pdfFiles.push(...mainPdfs);
+        
+        // Check protected subfolder
+        const protectedPath = path.join(outputFolder, 'protected');
+        if (fs.existsSync(protectedPath)) {
+          const protectedPdfs = fs.readdirSync(protectedPath)
+            .filter(file => file.endsWith('.pdf'))
+            .map(file => ({
+              filename: file,
+              path: path.join(protectedPath, file),
+              size: fs.statSync(path.join(protectedPath, file)).size,
+              location: 'protected'
+            }));
+          pdfFiles.push(...protectedPdfs);
+        }
+        
+        // Check unprotected subfolder
+        const unprotectedPath = path.join(outputFolder, 'unprotected');
+        if (fs.existsSync(unprotectedPath)) {
+          const unprotectedPdfs = fs.readdirSync(unprotectedPath)
+            .filter(file => file.endsWith('.pdf'))
+            .map(file => ({
+              filename: file,
+              path: path.join(unprotectedPath, file),
+              size: fs.statSync(path.join(unprotectedPath, file)).size,
+              location: 'unprotected'
+            }));
+          pdfFiles.push(...unprotectedPdfs);
+        }
+      }
 
       res.json({
         success: true,
@@ -172,6 +216,9 @@ app.get('/api/pdf/:filename', (req, res) => {
     
     outputFolders.forEach(folder => {
       possiblePaths.push(path.join('.', folder, filename));
+      // Also check protected and unprotected subfolders
+      possiblePaths.push(path.join('.', folder, 'protected', filename));
+      possiblePaths.push(path.join('.', folder, 'unprotected', filename));
     });
   } catch (error) {
     console.error('Error scanning for output folders:', error);
@@ -194,6 +241,9 @@ app.get('/api/pdf/:filename', (req, res) => {
   } else {
     console.error(`[ERROR] PDF not found: ${filename}`);
     console.error(`[ERROR] Searched paths:`, possiblePaths);
+    // Additional debug: check if the expected path exists
+    const expectedPath = path.join('.', 'output_JPH_September2025', 'unprotected', filename);
+    console.error(`[DEBUG] Expected path exists: ${fs.existsSync(expectedPath)} - ${expectedPath}`);
     res.status(404).json({ error: 'File not found' });
   }
 });
@@ -236,11 +286,37 @@ app.get('/api/folders', (req, res) => {
         return isDirectory && matchesPattern;
       })
       .map(folder => {
-        const pdfFiles = fs.readdirSync(folder).filter(file => file.endsWith('.pdf'));
-        console.log(`[DEBUG] Folder ${folder}: ${pdfFiles.length} PDFs`);
+        let pdfCount = 0;
+        
+        try {
+          // Check for PDFs directly in the folder
+          const directPdfs = fs.readdirSync(folder).filter(file => file.endsWith('.pdf'));
+          pdfCount += directPdfs.length;
+          
+          // Check for PDFs in protected and unprotected subfolders
+          const protectedPath = path.join(folder, 'protected');
+          const unprotectedPath = path.join(folder, 'unprotected');
+          
+          if (fs.existsSync(protectedPath) && fs.statSync(protectedPath).isDirectory()) {
+            const protectedPdfs = fs.readdirSync(protectedPath).filter(file => file.endsWith('.pdf'));
+            pdfCount += protectedPdfs.length;
+            console.log(`[DEBUG] Folder ${folder}/protected: ${protectedPdfs.length} PDFs`);
+          }
+          
+          if (fs.existsSync(unprotectedPath) && fs.statSync(unprotectedPath).isDirectory()) {
+            const unprotectedPdfs = fs.readdirSync(unprotectedPath).filter(file => file.endsWith('.pdf'));
+            pdfCount += unprotectedPdfs.length;
+            console.log(`[DEBUG] Folder ${folder}/unprotected: ${unprotectedPdfs.length} PDFs`);
+          }
+          
+        } catch (error) {
+          console.error(`[ERROR] Error scanning folder ${folder}:`, error.message);
+        }
+        
+        console.log(`[DEBUG] Folder ${folder}: ${pdfCount} total PDFs`);
         return {
           name: folder,
-          pdfCount: pdfFiles.length
+          pdfCount: pdfCount
         };
       })
       .filter(folder => folder.pdfCount > 0); // Only show folders with PDFs
@@ -382,7 +458,6 @@ app.post('/api/combine-pdfs', (req, res) => {
   
   const folderPath = path.resolve('.', folderName);
   const outputFileName = `${outputName}.pdf`;
-  const outputPath = path.resolve(folderPath, outputFileName); // Save in the same folder
   
   if (!fs.existsSync(folderPath)) {
     return res.status(404).json({
@@ -392,10 +467,28 @@ app.post('/api/combine-pdfs', (req, res) => {
   }
   
   try {
-    // Get all PDF files in the folder
-    const pdfFiles = fs.readdirSync(folderPath)
-      .filter(file => file.endsWith('.pdf'))
-      .map(file => path.join(folderPath, file));
+    // Only combine unprotected PDFs (since protected ones are identical but password-protected)
+    let pdfFiles = [];
+    let outputPath;
+    
+    // Check for unprotected subfolder first (new dual structure)
+    const unprotectedPath = path.join(folderPath, 'unprotected');
+    if (fs.existsSync(unprotectedPath) && fs.statSync(unprotectedPath).isDirectory()) {
+      const unprotectedPdfs = fs.readdirSync(unprotectedPath)
+        .filter(file => file.endsWith('.pdf'))
+        .map(file => path.join(unprotectedPath, file));
+      pdfFiles = unprotectedPdfs;
+      outputPath = path.resolve(unprotectedPath, outputFileName);
+      console.log(`[DEBUG] Found ${unprotectedPdfs.length} unprotected PDFs to combine`);
+    } else {
+      // Fallback to main folder (legacy structure)
+      const directPdfs = fs.readdirSync(folderPath)
+        .filter(file => file.endsWith('.pdf'))
+        .map(file => path.join(folderPath, file));
+      pdfFiles = directPdfs;
+      outputPath = path.resolve(folderPath, outputFileName);
+      console.log(`[DEBUG] Found ${directPdfs.length} PDFs in main folder (legacy structure)`);
+    }
     
     if (pdfFiles.length === 0) {
       return res.status(400).json({
@@ -403,6 +496,8 @@ app.post('/api/combine-pdfs', (req, res) => {
         message: 'No PDF files found in the selected folder'
       });
     }
+    
+    console.log(`[DEBUG] Combining PDFs and saving to: ${outputPath}`);
     
     // Use dedicated Python script to combine PDFs
     console.log(`[DEBUG] Combining ${pdfFiles.length} PDFs from ${folderName}`);
