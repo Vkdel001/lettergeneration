@@ -134,34 +134,56 @@ def send_email_with_pdf(api_instance, recipient_email, recipient_name, policy_no
         return False, error_msg
 
 def find_pdf_file(pdf_folder, expected_filename):
-    """Find PDF file with fuzzy matching for Unicode issues"""
-    # First try exact match
-    exact_path = os.path.join(pdf_folder, expected_filename)
-    if os.path.exists(exact_path):
-        return exact_path
+    """Find PDF file with fuzzy matching for Unicode issues - ONLY uses protected PDFs for email security"""
     
-    # If exact match fails, try fuzzy matching
+    # Define search locations - PROTECTED FOLDER FIRST for email security
+    search_locations = [
+        os.path.join(pdf_folder, 'protected'),    # Protected subfolder (PREFERRED for emails)
+        pdf_folder,  # Main folder (legacy structure - fallback only)
+    ]
+    
+    # Note: Unprotected folder is intentionally excluded for email security
+    
+    # Try exact match in all locations
+    for location in search_locations:
+        if os.path.exists(location):
+            exact_path = os.path.join(location, expected_filename)
+            if os.path.exists(exact_path):
+                print(f"[INFO] Found PDF (exact match): {exact_path}")
+                return exact_path
+    
+    # If exact match fails, try fuzzy matching in all locations
     try:
-        # Get all PDF files in the folder
-        pdf_files = [f for f in os.listdir(pdf_folder) if f.endswith('.pdf')]
-        
-        # Extract policy number from expected filename (usually at the start)
         import re
         policy_match = re.match(r'^([^_]+_[^_]+)', expected_filename)
         if policy_match:
             policy_prefix = policy_match.group(1)
             
-            # Find files that start with the same policy number
-            matching_files = [f for f in pdf_files if f.startswith(policy_prefix)]
-            
-            if len(matching_files) == 1:
-                found_path = os.path.join(pdf_folder, matching_files[0])
-                print(f"[INFO] Found PDF via fuzzy match: {matching_files[0]} (expected: {expected_filename})")
-                return found_path
-            elif len(matching_files) > 1:
-                print(f"[WARNING] Multiple PDFs match policy {policy_prefix}: {matching_files}")
-                # Return the first match
-                return os.path.join(pdf_folder, matching_files[0])
+            for location in search_locations:
+                if not os.path.exists(location):
+                    continue
+                    
+                try:
+                    # Get all PDF files in this location
+                    pdf_files = [f for f in os.listdir(location) if f.endswith('.pdf')]
+                    
+                    # Find files that start with the same policy number
+                    matching_files = [f for f in pdf_files if f.startswith(policy_prefix)]
+                    
+                    if len(matching_files) == 1:
+                        found_path = os.path.join(location, matching_files[0])
+                        print(f"[INFO] Found PDF via fuzzy match: {found_path} (expected: {expected_filename})")
+                        return found_path
+                    elif len(matching_files) > 1:
+                        print(f"[WARNING] Multiple PDFs match policy {policy_prefix} in {location}: {matching_files}")
+                        # Return the first match
+                        found_path = os.path.join(location, matching_files[0])
+                        print(f"[INFO] Using first match: {found_path}")
+                        return found_path
+                        
+                except Exception as e:
+                    print(f"[WARNING] Error searching in {location}: {str(e)}")
+                    continue
     
     except Exception as e:
         print(f"[WARNING] Error during fuzzy PDF search: {str(e)}")

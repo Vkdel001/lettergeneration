@@ -1,0 +1,4 @@
+# API Configuration Requirements
+requests>=2.25.1
+segno>=1.5.2
+python-dotenv>=0.19.0

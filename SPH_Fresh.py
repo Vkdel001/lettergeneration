@@ -44,22 +44,81 @@ except Exception as e:
     raise Exception(f"Failed to register fonts: {str(e)}")
 
 # Read the Excel file containing policyholder data
-try:
-    df = pd.read_excel("Generic_Template.xlsx", engine='openpyxl')
-    print(f"[OK] Excel file loaded successfully with {len(df)} rows")
-    print(f"[INFO] Available columns: {list(df.columns)}")
+# Robust Excel file loading with multiple fallback locations
+def load_excel_file():
+    """Load Excel file from multiple possible locations with error handling"""
+    possible_files = [
+        "Generic_Template.xlsx",  # Primary location (root)
+        "temp_uploads/Generic_Template.xlsx",  # Server upload location
+        "Generic_template.xlsx",  # Case variation
+        "temp_uploads/Generic_template.xlsx",  # Case variation in temp
+    ]
     
-    # Check if DataFrame is empty
-    if len(df) == 0:
-        print("[WARNING] Excel file is empty")
-        sys.exit(1)
-        
-except FileNotFoundError:
-    print("[ERROR] Excel file 'Generic_Template.xlsx' not found in the current directory")
+    # Also check for any .xlsx files in current directory as fallback
+    import glob
+    xlsx_files = glob.glob("*.xlsx")
+    possible_files.extend(xlsx_files)
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_files = []
+    for f in possible_files:
+        if f not in seen:
+            seen.add(f)
+            unique_files.append(f)
+    
+    print(f"[DEBUG] Looking for Excel file in these locations: {unique_files}")
+    
+    for file_path in unique_files:
+        if os.path.exists(file_path):
+            try:
+                print(f"[INFO] Attempting to load: {file_path}")
+                df = pd.read_excel(file_path, engine='openpyxl')
+                
+                # Validate the file has required columns
+                required_cols = ['Policy No', 'Arrears Amount']
+                available_cols = list(df.columns)
+                missing_cols = [col for col in required_cols if col not in available_cols]
+                
+                if missing_cols:
+                    print(f"[WARNING] File {file_path} missing required columns: {missing_cols}")
+                    continue
+                
+                if len(df) == 0:
+                    print(f"[WARNING] File {file_path} is empty")
+                    continue
+                
+                print(f"[OK] Excel file loaded successfully from: {file_path}")
+                print(f"[OK] Loaded {len(df)} rows with columns: {available_cols}")
+                return df
+                
+            except Exception as e:
+                print(f"[WARNING] Failed to load {file_path}: {str(e)}")
+                continue
+    
+    # If we get here, no valid file was found
+    print("[ERROR] No valid Excel file found!")
+    print("[ERROR] Searched locations:")
+    for f in unique_files:
+        exists = "✓" if os.path.exists(f) else "✗"
+        print(f"[ERROR]   {exists} {f}")
+    
+    print("[ERROR] Please ensure your Excel file is uploaded correctly")
     sys.exit(1)
-except Exception as e:
-    print(f"[ERROR] Error reading Excel file: {str(e)}")
-    sys.exit(1)
+
+# Load the Excel file using robust method
+df = load_excel_file()
+
+# Performance optimization for large files
+total_rows = len(df)
+if total_rows > 2000:
+    print(f"[INFO] Large file detected: {total_rows} rows")
+    print(f"[INFO] Estimated processing time: {total_rows * 2 / 60:.1f} minutes")
+    print(f"[INFO] This may take a while - please be patient...")
+elif total_rows > 5000:
+    print(f"[WARNING] Very large file: {total_rows} rows")
+    print(f"[WARNING] Processing may take 15-30 minutes")
+    print(f"[WARNING] Consider splitting the file into smaller batches if timeout occurs")
 
 # Create folders to store generated PDFs - dual folder structure
 import sys
@@ -171,7 +230,18 @@ styles['TableTextBold'] = ParagraphStyle(
 
 # Iterate through each row in the DataFrame to process individual policyholder data
 for index, row in df.iterrows():
-    print(f"[PROCESSING] Row {index + 1} of {len(df)}")
+    # Enhanced progress reporting for large files
+    total_rows = len(df)
+    current_row = index + 1
+    
+    if total_rows > 1000:
+        # For large files, show progress every 50 rows (more frequent updates)
+        if current_row % 50 == 0 or current_row == 1 or current_row == total_rows:
+            percentage = (current_row / total_rows) * 100
+            print(f"[PROGRESS] Processing row {current_row} of {total_rows} ({percentage:.1f}%) - Starting PDF generation...")
+    else:
+        # For smaller files, show every row
+        print(f"[PROCESSING] Row {current_row} of {total_rows}")
     
     # Extract relevant data from the current row
     owner1_title = row.get('Owner 1 Title', '')
@@ -265,6 +335,8 @@ for index, row in df.iterrows():
         safe_policy = re.sub(r'[^\w\s-]', '_', str(policy_no)).strip()
 
     # Generate QR Code for payment
+    if total_rows > 1000 and current_row % 50 == 0:
+        print(f"[PROGRESS] Row {current_row}: Generating QR code...")
     try:
         payload = {
             "MerchantId": 151,
@@ -302,6 +374,9 @@ for index, row in df.iterrows():
             "AdditionalPurposeTransaction": str(nic)
         }
         
+        if total_rows > 1000 and current_row % 50 == 0:
+            print(f"[PROGRESS] Row {current_row}: Making API call for QR code...")
+        
         response = requests.post(
             "https://api.zwennpay.com:9425/api/v1.0/Common/GetMerchantQR",
             headers={"accept": "text/plain", "Content-Type": "application/json"},
@@ -332,6 +407,10 @@ for index, row in df.iterrows():
     # Create PDF filenames for both protected and unprotected versions
     protected_pdf_filename = f"{protected_folder}/{safe_policy}_{safe_name}.pdf"
     unprotected_pdf_filename = f"{unprotected_folder}/{safe_policy}_{safe_name}.pdf"
+    
+    if total_rows > 1000 and current_row % 50 == 0:
+        print(f"[PROGRESS] Row {current_row}: Creating PDF document...")
+    
     # Create unprotected PDF first
     c = canvas.Canvas(unprotected_pdf_filename, pagesize=A4)
     width, height = A4
@@ -342,9 +421,8 @@ for index, row in df.iterrows():
     # Store the top position of the date
     date_top_y = y_pos
 
-    # Add current date
-    current_date = datetime.now().strftime("%d-%B-%Y")
-    date_para = Paragraph(f"{current_date}", styles['SalutationText'])
+    # Add arrears processing date from Excel file
+    date_para = Paragraph(f"{arrears_date_formatted}", styles['SalutationText'])
     date_para.wrapOn(c, width - margin, height)
     date_para.drawOn(c, margin, y_pos - date_para.height)
     y_pos -= date_para.height + 12
@@ -387,12 +465,11 @@ for index, row in df.iterrows():
     intro.drawOn(c, margin, y_pos - intro.height)
     y_pos -= intro.height + 8  # Increased breathing space before table
 
-    # Create and draw policy details table (new 5-column format)
+    # Create and draw policy details table (new 4-column format)
     table_headers = [
         Paragraph('Policy No.', styles['TableTextBold']),
         Paragraph('Payment Frequency', styles['TableTextBold']),
         Paragraph('Premium Amount (MUR)', styles['TableTextBold']),
-        Paragraph('No. of Instalments in Arrears', styles['TableTextBold']),
         Paragraph('Total Premium in Arrears (MUR)', styles['TableTextBold'])
     ]
     table_data = [
@@ -400,12 +477,12 @@ for index, row in df.iterrows():
             Paragraph(str(policy_no), styles['TableText']),
             Paragraph(str(frequency), styles['TableText']),
             Paragraph(f"{gross_premium:,.2f}", styles['TableText']),
-            Paragraph(str(no_installments), styles['TableText']),
             Paragraph(f"{amount:,.2f}", styles['TableText'])
         ]
     ]
     data = [table_headers] + table_data
-    table = Table(data, colWidths=[80, 70, 70, 90, 100])
+    # Adjust column widths to use full text width (total: ~495px for A4 with 50px margins)
+    table = Table(data, colWidths=[120, 120, 125, 130])
     table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, -1), 'Cambria'),
@@ -448,7 +525,7 @@ for index, row in df.iterrows():
     y_pos -= para2.height + 3
 
     # Point 2: Growth of Your Savings
-    text3 = "<font name='Cambria-Bold'>Growth of Your Savings:</font> Every premium contributes to building long-term savings that support your financial goals—be it retirement, children's education, funding your dream project, or financial security."
+    text3 = "<font name='Cambria-Bold'>Growth of Your Savings:</font> Every premium contributes to building long-term savings that support your financial goals,be it retirement, children's education, funding your dream project, or financial security."
     para3 = Paragraph(text3, styles['BodyText'])
     para3.wrapOn(c, width - 2 * margin - 25, height)
     # Position checkmark to align with first line of text (lower position)
@@ -517,14 +594,14 @@ for index, row in df.iterrows():
         # Add maucas logo (bigger size using available space)
         if os.path.exists("maucas2.jpeg"):
             img = ImageReader("maucas2.jpeg")
-            img_width = 85  # Increased from 70 to 85 for better visibility
+            img_width = 110  # Increased from 85 to 110 for better visibility on letterhead
             img_height = img_width * (img.getSize()[1] / img.getSize()[0])
             logo_x = page_center_x - (img_width / 2)
             c.drawImage(img, logo_x, y_pos - img_height, width=img_width, height=img_height)
             y_pos -= img_height + 2
         elif os.path.exists("maucas.jpeg"):
             img = ImageReader("maucas.jpeg")
-            img_width = 85  # Increased from 70 to 85 for better visibility
+            img_width = 110  # Increased from 85 to 110 for better visibility on letterhead
             img_height = img_width * (img.getSize()[1] / img.getSize()[0])
             logo_x = page_center_x - (img_width / 2)
             c.drawImage(img, logo_x, y_pos - img_height, width=img_width, height=img_height)
@@ -571,11 +648,34 @@ for index, row in df.iterrows():
     tagline.wrapOn(c, width - 2 * margin, height)
     tagline.drawOn(c, margin, tagline_y_pos - tagline.height)
     
-    # Add computer generated statement in grey color
-    computer_generated_y_pos = tagline_y_pos - tagline.height - 8
+    # Add assignee surname if present (between NIC tagline and computer generated statement)
+    assignee_y_pos = tagline_y_pos - tagline.height - 8  # Small gap after NIC tagline
+    if assignee_surname and pd.notna(assignee_surname) and str(assignee_surname).strip():
+        assignee_text = str(assignee_surname).strip()
+        assignee_para = Paragraph(
+            f"{assignee_text}",
+            styles['BodyText']
+        )
+        assignee_para.wrapOn(c, width - 2 * margin, height)
+        assignee_para.drawOn(c, margin, assignee_y_pos - assignee_para.height)
+        assignee_y_pos -= assignee_para.height + 8  # Gap after assignee name
+    
+    # Add computer generated statement in grey color (center aligned, pushed lower)
+    computer_generated_y_pos = assignee_y_pos - 17  # Spacing before computer generated statement
+    
+    # Create center-aligned style for computer generated statement
+    computer_generated_style = ParagraphStyle(
+        name='ComputerGenerated',
+        fontName='Cambria',
+        fontSize=9,
+        leading=11,
+        alignment=1,  # Center alignment
+        textColor=colors.grey
+    )
+    
     computer_generated = Paragraph(
-        "<font color='grey'>This is a computer generated statement and requires no signature</font>",
-        styles['BodyText']
+        "This is a computer generated statement and requires no signature",
+        computer_generated_style
     )
     computer_generated.wrapOn(c, width - 2 * margin, height)
     computer_generated.drawOn(c, margin, computer_generated_y_pos - computer_generated.height)
@@ -625,6 +725,9 @@ for index, row in df.iterrows():
     if os.path.exists(qr_filename):
         os.remove(qr_filename)
 
+    if total_rows > 1000 and current_row % 50 == 0:
+        print(f"[PROGRESS] Row {current_row}: PDF completed successfully!")
+    
     print(f"✅ PDFs generated successfully for {name}")
     print(f"   📁 Protected: {protected_pdf_filename}")
     print(f"   📁 Unprotected: {unprotected_pdf_filename}")

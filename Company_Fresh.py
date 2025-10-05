@@ -44,22 +44,81 @@ except Exception as e:
     raise Exception(f"Failed to register fonts: {str(e)}")
 
 # Read the Excel file containing policyholder data
-try:
-    df = pd.read_excel("Generic_Template.xlsx", engine='openpyxl')
-    print(f"[OK] Excel file loaded successfully with {len(df)} rows")
-    print(f"[INFO] Available columns: {list(df.columns)}")
+# Robust Excel file loading with multiple fallback locations
+def load_excel_file():
+    """Load Excel file from multiple possible locations with error handling"""
+    possible_files = [
+        "Generic_Template.xlsx",  # Primary location (root)
+        "temp_uploads/Generic_Template.xlsx",  # Server upload location
+        "Generic_template.xlsx",  # Case variation
+        "temp_uploads/Generic_template.xlsx",  # Case variation in temp
+    ]
     
-    # Check if DataFrame is empty
-    if len(df) == 0:
-        print("[WARNING] Excel file is empty")
-        sys.exit(1)
-        
-except FileNotFoundError:
-    print("[ERROR] Excel file 'Generic_Template.xlsx' not found in the current directory")
+    # Also check for any .xlsx files in current directory as fallback
+    import glob
+    xlsx_files = glob.glob("*.xlsx")
+    possible_files.extend(xlsx_files)
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_files = []
+    for f in possible_files:
+        if f not in seen:
+            seen.add(f)
+            unique_files.append(f)
+    
+    print(f"[DEBUG] Looking for Excel file in these locations: {unique_files}")
+    
+    for file_path in unique_files:
+        if os.path.exists(file_path):
+            try:
+                print(f"[INFO] Attempting to load: {file_path}")
+                df = pd.read_excel(file_path, engine='openpyxl')
+                
+                # Validate the file has required columns
+                required_cols = ['Policy No', 'Arrears Amount']
+                available_cols = list(df.columns)
+                missing_cols = [col for col in required_cols if col not in available_cols]
+                
+                if missing_cols:
+                    print(f"[WARNING] File {file_path} missing required columns: {missing_cols}")
+                    continue
+                
+                if len(df) == 0:
+                    print(f"[WARNING] File {file_path} is empty")
+                    continue
+                
+                print(f"[OK] Excel file loaded successfully from: {file_path}")
+                print(f"[OK] Loaded {len(df)} rows with columns: {available_cols}")
+                return df
+                
+            except Exception as e:
+                print(f"[WARNING] Failed to load {file_path}: {str(e)}")
+                continue
+    
+    # If we get here, no valid file was found
+    print("[ERROR] No valid Excel file found!")
+    print("[ERROR] Searched locations:")
+    for f in unique_files:
+        exists = "✓" if os.path.exists(f) else "✗"
+        print(f"[ERROR]   {exists} {f}")
+    
+    print("[ERROR] Please ensure your Excel file is uploaded correctly")
     sys.exit(1)
-except Exception as e:
-    print(f"[ERROR] Error reading Excel file: {str(e)}")
-    sys.exit(1)
+
+# Load the Excel file using robust method
+df = load_excel_file()
+
+# Performance optimization for large files
+total_rows = len(df)
+if total_rows > 2000:
+    print(f"[INFO] Large file detected: {total_rows} rows")
+    print(f"[INFO] Estimated processing time: {total_rows * 2 / 60:.1f} minutes")
+    print(f"[INFO] This may take a while - please be patient...")
+elif total_rows > 5000:
+    print(f"[WARNING] Very large file: {total_rows} rows")
+    print(f"[WARNING] Processing may take 15-30 minutes")
+    print(f"[WARNING] Consider splitting the file into smaller batches if timeout occurs")
 
 # Create a folder to store generated PDFs - use dynamic folder name
 import sys
@@ -76,8 +135,16 @@ if len(sys.argv) > 1:
             print(f"[DEBUG] Found --output argument: {output_folder}")
             break
 
+# Create main folder and subfolders
 os.makedirs(output_folder, exist_ok=True)
+protected_folder = os.path.join(output_folder, "protected")
+unprotected_folder = os.path.join(output_folder, "unprotected")
+os.makedirs(protected_folder, exist_ok=True)
+os.makedirs(unprotected_folder, exist_ok=True)
+
 print(f"[INFO] Using output folder: {output_folder}")
+print(f"[INFO] Protected PDFs folder: {protected_folder}")
+print(f"[INFO] Unprotected PDFs folder: {unprotected_folder}")
 
 # Define custom paragraph styles explicitly
 styles = {}
@@ -163,7 +230,18 @@ styles['TableTextBold'] = ParagraphStyle(
 
 # Iterate through each row in the DataFrame to process individual policyholder data
 for index, row in df.iterrows():
-    print(f"[PROCESSING] Row {index + 1} of {len(df)}")
+    # Enhanced progress reporting for large files
+    total_rows = len(df)
+    current_row = index + 1
+    
+    if total_rows > 1000:
+        # For large files, show progress every 100 rows
+        if current_row % 100 == 0 or current_row == 1 or current_row == total_rows:
+            percentage = (current_row / total_rows) * 100
+            print(f"[PROGRESS] Row {current_row} of {total_rows} ({percentage:.1f}%)")
+    else:
+        # For smaller files, show every row
+        print(f"[PROCESSING] Row {current_row} of {total_rows}")
     
     # Extract relevant data from the current row
     owner1_title = row.get('Owner 1 Title', '')
@@ -321,9 +399,12 @@ for index, row in df.iterrows():
         print(f"⚠️ Error generating QR for {name}: {str(e)}")
         continue
 
-    # Create a PDF for the current policyholder
-    pdf_filename = f"{output_folder}/{safe_policy}_{safe_name}.pdf"
-    c = canvas.Canvas(pdf_filename, pagesize=A4)
+    # Create PDF filenames for both protected and unprotected versions
+    protected_pdf_filename = f"{protected_folder}/{safe_policy}_{safe_name}.pdf"
+    unprotected_pdf_filename = f"{unprotected_folder}/{safe_policy}_{safe_name}.pdf"
+    
+    # Create unprotected PDF first
+    c = canvas.Canvas(unprotected_pdf_filename, pagesize=A4)
     width, height = A4
     margin = 50
     bottom_margin = 20
@@ -511,20 +592,17 @@ for index, row in df.iterrows():
     footer2.wrapOn(c, width - 2 * margin, height)
     footer2.drawOn(c, margin, bottom_margin)
 
-    # Save the PDF
+    # Save the unprotected PDF
     c.save()
+    print(f"✅ Unprotected PDF saved: {unprotected_pdf_filename}")
 
-    # Add password protection using customer's NIC
+    # Create password-protected version using customer's NIC
     try:
         if nic and str(nic).strip():
             password = str(nic).strip()
             
-            # Create password-protected version
-            temp_filename = pdf_filename.replace('.pdf', '_temp.pdf')
-            os.rename(pdf_filename, temp_filename)
-            
             # Read the unprotected PDF
-            with open(temp_filename, 'rb') as input_file:
+            with open(unprotected_pdf_filename, 'rb') as input_file:
                 reader = PdfFileReader(input_file)
                 writer = PdfFileWriter()
                 
@@ -535,21 +613,29 @@ for index, row in df.iterrows():
                 # Encrypt with NIC as password
                 writer.encrypt(password)
                 
-                # Write password-protected PDF
-                with open(pdf_filename, 'wb') as output_file:
+                # Write password-protected PDF to protected folder
+                with open(protected_pdf_filename, 'wb') as output_file:
                     writer.write(output_file)
             
-            # Remove temporary file
-            os.remove(temp_filename)
-            print(f"🔒 PDF password-protected with NIC: {password}")
+            print(f"🔒 Protected PDF saved with NIC password: {protected_pdf_filename}")
         else:
-            print(f"⚠️ No NIC found for {name}, PDF saved without password protection")
+            # If no NIC, copy unprotected version to protected folder
+            import shutil
+            shutil.copy2(unprotected_pdf_filename, protected_pdf_filename)
+            print(f"⚠️ No NIC found for {name}, copied unprotected PDF to both folders")
     except Exception as e:
-        print(f"⚠️ Failed to add password protection: {str(e)}")
-        # If password protection fails, ensure we still have the original PDF
-        temp_filename = pdf_filename.replace('.pdf', '_temp.pdf')
-        if os.path.exists(temp_filename):
-            os.rename(temp_filename, pdf_filename)
+        print(f"⚠️ Failed to create protected PDF: {str(e)}")
+        # If password protection fails, copy unprotected version
+        try:
+            import shutil
+            shutil.copy2(unprotected_pdf_filename, protected_pdf_filename)
+            print(f"📄 Copied unprotected PDF to protected folder as fallback")
+        except Exception as copy_error:
+            print(f"❌ Failed to copy PDF: {str(copy_error)}")
+
+    print(f"✅ PDFs generated successfully for {name}")
+    print(f"   📁 Protected: {protected_pdf_filename}")
+    print(f"   📁 Unprotected: {unprotected_pdf_filename}")
 
     # Clean up QR code file
     if os.path.exists(qr_filename):

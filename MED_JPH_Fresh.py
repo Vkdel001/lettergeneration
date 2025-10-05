@@ -44,22 +44,70 @@ except Exception as e:
     raise Exception(f"Failed to register fonts: {str(e)}")
 
 # Read the Excel file containing policyholder data
-try:
-    df = pd.read_excel("Generic_Template.xlsx", engine='openpyxl')
-    print(f"[OK] Excel file loaded successfully with {len(df)} rows")
-    print(f"[INFO] Available columns: {list(df.columns)}")
+# Robust Excel file loading with multiple fallback locations
+def load_excel_file():
+    """Load Excel file from multiple possible locations with error handling"""
+    possible_files = [
+        "Generic_Template.xlsx",  # Primary location (root)
+        "temp_uploads/Generic_Template.xlsx",  # Server upload location
+        "Generic_template.xlsx",  # Case variation
+        "temp_uploads/Generic_template.xlsx",  # Case variation in temp
+    ]
     
-    # Check if DataFrame is empty
-    if len(df) == 0:
-        print("[WARNING] Excel file is empty")
-        sys.exit(1)
-        
-except FileNotFoundError:
-    print("[ERROR] Excel file 'Generic_Template.xlsx' not found in the current directory")
+    # Also check for any .xlsx files in current directory as fallback
+    import glob
+    xlsx_files = glob.glob("*.xlsx")
+    possible_files.extend(xlsx_files)
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_files = []
+    for f in possible_files:
+        if f not in seen:
+            seen.add(f)
+            unique_files.append(f)
+    
+    print(f"[DEBUG] Looking for Excel file in these locations: {unique_files}")
+    
+    for file_path in unique_files:
+        if os.path.exists(file_path):
+            try:
+                print(f"[INFO] Attempting to load: {file_path}")
+                df = pd.read_excel(file_path, engine='openpyxl')
+                
+                # Validate the file has required columns
+                required_cols = ['Policy No', 'Arrears Amount']
+                available_cols = list(df.columns)
+                missing_cols = [col for col in required_cols if col not in available_cols]
+                
+                if missing_cols:
+                    print(f"[WARNING] File {file_path} missing required columns: {missing_cols}")
+                    continue
+                
+                if len(df) == 0:
+                    print(f"[WARNING] File {file_path} is empty")
+                    continue
+                
+                print(f"[OK] Excel file loaded successfully from: {file_path}")
+                print(f"[OK] Loaded {len(df)} rows with columns: {available_cols}")
+                return df
+                
+            except Exception as e:
+                print(f"[WARNING] Failed to load {file_path}: {str(e)}")
+                continue
+    
+    # If we get here, no valid file was found
+    print("[ERROR] No valid Excel file found!")
+    print("[ERROR] Searched locations:")
+    for f in unique_files:
+        exists = "✓" if os.path.exists(f) else "✗"
+        print(f"[ERROR]   {exists} {f}")
+    
+    print("[ERROR] Please ensure your Excel file is uploaded correctly")
     sys.exit(1)
-except Exception as e:
-    print(f"[ERROR] Error reading Excel file: {str(e)}")
-    sys.exit(1)
+
+# Load the Excel file using robust method
+df = load_excel_file()
 
 # Create a folder named 'output_letters' to store generated PDFs, if it doesn't already exist
 os.makedirs("output_letters", exist_ok=True)

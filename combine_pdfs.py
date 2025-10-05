@@ -7,13 +7,38 @@ Combines multiple PDF files into a single PDF file.
 import sys
 import os
 import argparse
-from PyPDF2 import PdfFileReader, PdfFileWriter
 import json
+
+# Handle different PyPDF2 versions
+try:
+    from PyPDF2 import PdfReader, PdfWriter
+    PYPDF2_VERSION = "new"
+    print("Using PyPDF2 v3+ (PdfReader/PdfWriter)")
+except ImportError:
+    try:
+        from PyPDF2 import PdfFileReader as PdfReader, PdfFileWriter as PdfWriter
+        PYPDF2_VERSION = "old"
+        print("Using PyPDF2 v2 (PdfFileReader/PdfFileWriter)")
+    except ImportError:
+        try:
+            # Very old PyPDF2 versions (1.x)
+            from PyPDF2 import PdfFileReader, PdfFileWriter
+            PYPDF2_VERSION = "very_old"
+            print("Using PyPDF2 v1.x (PdfFileReader/PdfFileWriter)")
+        except ImportError:
+            print("ERROR: PyPDF2 not found. Please install: pip install PyPDF2")
+            sys.exit(1)
 
 def combine_pdfs(pdf_files, output_path):
     """Combine multiple PDF files into one using unprotected PDFs."""
     try:
-        writer = PdfFileWriter()
+        # Initialize writer based on PyPDF2 version
+        if PYPDF2_VERSION == "very_old":
+            writer = PdfFileWriter()
+        else:
+            writer = PdfWriter()
+        
+        print(f"Starting PDF combination of {len(pdf_files)} files...")
         
         # Convert paths to use unprotected folder if dual structure exists
         unprotected_files = []
@@ -44,15 +69,40 @@ def combine_pdfs(pdf_files, output_path):
                 else:
                     unprotected_files.append(pdf_file)
         
-        for pdf_file in unprotected_files:
+        for i, pdf_file in enumerate(unprotected_files):
             if os.path.exists(pdf_file):
-                print(f"Adding: {pdf_file}")
-                reader = PdfFileReader(pdf_file)
-                
-                # Add all pages from this PDF (should be unprotected)
-                for page_num in range(reader.getNumPages()):
-                    page = reader.getPage(page_num)
-                    writer.addPage(page)
+                print(f"Adding file {i+1}/{len(unprotected_files)}: {os.path.basename(pdf_file)}")
+                try:
+                    # Initialize reader based on PyPDF2 version
+                    if PYPDF2_VERSION == "very_old":
+                        reader = PdfFileReader(pdf_file)
+                    else:
+                        reader = PdfReader(pdf_file)
+                    
+                    # Add all pages from this PDF (should be unprotected)
+                    if PYPDF2_VERSION == "new":
+                        # PyPDF2 v3+ syntax
+                        for page in reader.pages:
+                            writer.add_page(page)
+                        page_count = len(reader.pages)
+                    elif PYPDF2_VERSION == "old":
+                        # PyPDF2 v2 syntax
+                        for page_num in range(reader.getNumPages()):
+                            page = reader.getPage(page_num)
+                            writer.addPage(page)
+                        page_count = reader.getNumPages()
+                    else:
+                        # PyPDF2 v1.x syntax (very old)
+                        for page_num in range(reader.getNumPages()):
+                            page = reader.getPage(page_num)
+                            writer.addPage(page)
+                        page_count = reader.getNumPages()
+                    
+                    print(f"Successfully added {page_count} pages")
+                    
+                except Exception as file_error:
+                    print(f"ERROR: Failed to process {pdf_file}: {str(file_error)}")
+                    continue
             else:
                 print(f"Warning: File not found: {pdf_file}")
         
@@ -65,6 +115,15 @@ def combine_pdfs(pdf_files, output_path):
                 output_path = os.path.join(unprotected_dir, os.path.basename(output_path))
                 print(f"Saving combined PDF to unprotected folder: {output_path}")
         
+        # Ensure output directory exists
+        output_dir = os.path.dirname(output_path)
+        if output_dir and output_dir != '':
+            print(f"Creating output directory: {output_dir}")
+            os.makedirs(output_dir, exist_ok=True)
+        else:
+            print("Output file is in current directory")
+        
+        print(f"Writing combined PDF to: {output_path}")
         with open(output_path, 'wb') as output_file:
             writer.write(output_file)
         
@@ -73,28 +132,61 @@ def combine_pdfs(pdf_files, output_path):
         
     except Exception as e:
         print(f"Error combining PDFs: {str(e)}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
         return False
 
 def main():
     parser = argparse.ArgumentParser(description='Combine PDF files')
-    parser.add_argument('--files', required=True, help='JSON array of PDF file paths')
+    parser.add_argument('--files', help='JSON array of PDF file paths')
+    parser.add_argument('--files-from-file', help='Path to JSON file containing PDF file paths')
     parser.add_argument('--output', required=True, help='Output PDF file path')
     
     args = parser.parse_args()
     
+    print(f"Combine PDFs started...")
+    print(f"Output path: {args.output}")
+    
     try:
-        # Parse the JSON array of file paths
-        pdf_files = json.loads(args.files)
+        # Parse the JSON array of file paths (from command line or file)
+        if args.files_from_file:
+            print(f"Reading file list from: {args.files_from_file}")
+            with open(args.files_from_file, 'r') as f:
+                pdf_files = json.load(f)
+            print(f"Parsed {len(pdf_files)} file paths from JSON file")
+        elif args.files:
+            pdf_files = json.loads(args.files)
+            print(f"Parsed {len(pdf_files)} file paths from command line JSON")
+        else:
+            print("Error: Either --files or --files-from-file must be provided", file=sys.stderr)
+            sys.exit(1)
         
         if not pdf_files:
             print("Error: No PDF files provided", file=sys.stderr)
             sys.exit(1)
         
-        success = combine_pdfs(pdf_files, args.output)
+        # Validate that files exist
+        existing_files = []
+        for pdf_file in pdf_files:
+            if os.path.exists(pdf_file):
+                existing_files.append(pdf_file)
+                print(f"✓ Found: {pdf_file}")
+            else:
+                print(f"✗ Missing: {pdf_file}")
+        
+        if not existing_files:
+            print("Error: No valid PDF files found", file=sys.stderr)
+            sys.exit(1)
+        
+        print(f"Processing {len(existing_files)} valid PDF files...")
+        
+        success = combine_pdfs(existing_files, args.output)
         
         if success:
+            print("✅ PDF combination completed successfully!")
             sys.exit(0)
         else:
+            print("❌ PDF combination failed!", file=sys.stderr)
             sys.exit(1)
             
     except json.JSONDecodeError as e:

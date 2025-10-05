@@ -48,11 +48,43 @@ app.post('/api/generate-pdfs', upload.single('excelFile'), (req, res) => {
   
   console.log(`[DEBUG] Received template: ${template}`);
   console.log(`[DEBUG] Received outputFolder: ${customOutputFolder}`);
+  console.log(`[DEBUG] Input file path: ${inputFile}`);
   
   // Use custom output folder if provided, otherwise use default
   const outputFolder = customOutputFolder 
     ? path.resolve('.', customOutputFolder)
     : path.resolve(outputDir);
+  
+  // Create a backup copy in root directory for fallback with validation
+  const fallbackFile = path.resolve('.', 'Generic_Template.xlsx');
+  try {
+    fs.copyFileSync(inputFile, fallbackFile);
+    
+    // Verify the file was copied correctly
+    const inputStats = fs.statSync(inputFile);
+    const fallbackStats = fs.statSync(fallbackFile);
+    
+    if (inputStats.size !== fallbackStats.size) {
+      throw new Error(`File size mismatch: input=${inputStats.size}, fallback=${fallbackStats.size}`);
+    }
+    
+    console.log(`[DEBUG] Created fallback file: ${fallbackFile} (${fallbackStats.size} bytes)`);
+    
+    // Also create a timestamped backup for debugging
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const debugFile = path.resolve('.', `Generic_Template_debug_${timestamp}.xlsx`);
+    fs.copyFileSync(fallbackFile, debugFile);
+    console.log(`[DEBUG] Created debug file: ${debugFile}`);
+    
+  } catch (error) {
+    console.error(`[ERROR] Could not create fallback file: ${error.message}`);
+    // This is critical - if we can't create the fallback, the process will likely fail
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to process uploaded file',
+      error: error.message
+    });
+  }
   
   console.log(`Starting PDF generation with template: ${template}`);
   console.log(`Input file: ${inputFile}`);
@@ -467,20 +499,29 @@ app.post('/api/combine-pdfs', (req, res) => {
   }
   
   try {
+    console.log(`[DEBUG] Starting combine PDFs process for folder: ${folderName}`);
+    console.log(`[DEBUG] Folder path: ${folderPath}`);
+    console.log(`[DEBUG] Output filename: ${outputFileName}`);
+    
     // Only combine unprotected PDFs (since protected ones are identical but password-protected)
     let pdfFiles = [];
     let outputPath;
     
     // Check for unprotected subfolder first (new dual structure)
     const unprotectedPath = path.join(folderPath, 'unprotected');
+    console.log(`[DEBUG] Checking unprotected path: ${unprotectedPath}`);
+    
     if (fs.existsSync(unprotectedPath) && fs.statSync(unprotectedPath).isDirectory()) {
+      console.log(`[DEBUG] Unprotected folder exists, scanning for PDFs...`);
       const unprotectedPdfs = fs.readdirSync(unprotectedPath)
         .filter(file => file.endsWith('.pdf'))
         .map(file => path.join(unprotectedPath, file));
       pdfFiles = unprotectedPdfs;
       outputPath = path.resolve(unprotectedPath, outputFileName);
       console.log(`[DEBUG] Found ${unprotectedPdfs.length} unprotected PDFs to combine`);
+      console.log(`[DEBUG] PDF files: ${unprotectedPdfs.slice(0, 3).join(', ')}${unprotectedPdfs.length > 3 ? '...' : ''}`);
     } else {
+      console.log(`[DEBUG] No unprotected folder, checking main folder...`);
       // Fallback to main folder (legacy structure)
       const directPdfs = fs.readdirSync(folderPath)
         .filter(file => file.endsWith('.pdf'))
@@ -503,63 +544,98 @@ app.post('/api/combine-pdfs', (req, res) => {
     console.log(`[DEBUG] Combining ${pdfFiles.length} PDFs from ${folderName}`);
     console.log(`[DEBUG] Output file: ${outputPath}`);
     
-    const python = spawn('python', [
-      'combine_pdfs.py',
-      '--files', JSON.stringify(pdfFiles),
-      '--output', outputPath
-    ], {
-      encoding: 'utf8'
-    });
+    // Create temporary file for JSON data to avoid command line escaping issues
+    const tempJsonFile = path.resolve('.', `temp_combine_${Date.now()}.json`);
     
-    let stdout = '';
-    let stderr = '';
-    
-    python.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-    
-    python.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-    
-    python.on('close', (code) => {
-      console.log(`[DEBUG] Python script finished with code: ${code}`);
-      console.log(`[DEBUG] Python stdout: ${stdout}`);
-      if (stderr) console.log(`[DEBUG] Python stderr: ${stderr}`);
+    try {
+      fs.writeFileSync(tempJsonFile, JSON.stringify(pdfFiles));
+      console.log(`[DEBUG] Created temp JSON file: ${tempJsonFile}`);
       
-      if (code === 0 && fs.existsSync(outputPath)) {
-        res.json({
-          success: true,
-          message: `Combined ${pdfFiles.length} PDFs successfully`,
-          filename: outputFileName,
-          folderPath: folderName,
-          fullPath: outputPath,
-          pdfCount: pdfFiles.length
-        });
-      } else {
+      const pythonArgs = [
+        'combine_pdfs.py',
+        '--files-from-file', tempJsonFile,
+        '--output', outputPath
+      ];
+      
+      console.log(`[DEBUG] Python command: python ${pythonArgs.join(' ')}`);
+      console.log(`[DEBUG] Files JSON written to temp file: ${pdfFiles.length} files`);
+      
+      const python = spawn('python', pythonArgs, {
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+      
+      let stdout = '';
+      let stderr = '';
+      
+      python.stdout.on('data', (data) => {
+        stdout += data.toString();
+      });
+      
+      python.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
+      
+      python.on('close', (code) => {
+        // Clean up temp file
+        try {
+          if (fs.existsSync(tempJsonFile)) {
+            fs.unlinkSync(tempJsonFile);
+            console.log(`[DEBUG] Cleaned up temp file: ${tempJsonFile}`);
+          }
+        } catch (cleanupError) {
+          console.warn(`[WARNING] Could not clean up temp file: ${cleanupError.message}`);
+        }
+        
+        console.log(`[DEBUG] Python script finished with code: ${code}`);
+        console.log(`[DEBUG] Python stdout: ${stdout}`);
+        if (stderr) console.log(`[DEBUG] Python stderr: ${stderr}`);
+        
+        if (code === 0 && fs.existsSync(outputPath)) {
+          res.json({
+            success: true,
+            message: `Combined ${pdfFiles.length} PDFs successfully`,
+            filename: outputFileName,
+            folderPath: folderName,
+            fullPath: outputPath,
+            pdfCount: pdfFiles.length
+          });
+        } else {
+          res.status(500).json({
+            success: false,
+            message: 'Failed to combine PDFs',
+            error: stderr || 'Unknown error occurred',
+            stdout: stdout
+          });
+        }
+      });
+      
+      python.on('error', (error) => {
+        console.error('[ERROR] Failed to start Python process:', error);
         res.status(500).json({
           success: false,
-          message: 'Failed to combine PDFs',
-          error: stderr || 'Unknown error occurred',
-          stdout: stdout
+          message: 'Failed to start PDF combination process',
+          error: error.message
         });
-      }
-    });
-    
-    python.on('error', (error) => {
-      console.error('[ERROR] Failed to start Python process:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to start PDF combination process',
-        error: error.message
       });
-    });
+      
+    } catch (fileError) {
+      console.error(`[ERROR] Could not create temp JSON file: ${fileError.message}`);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to prepare file list for PDF combination',
+        error: fileError.message
+      });
+    }
     
   } catch (error) {
+    console.error('[ERROR] Exception in combine PDFs endpoint:', error);
+    console.error('[ERROR] Stack trace:', error.stack);
     res.status(500).json({
       success: false,
       message: 'Failed to combine PDFs',
-      error: error.message
+      error: error.message,
+      stack: error.stack
     });
   }
 });

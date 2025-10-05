@@ -44,22 +44,81 @@ except Exception as e:
     raise Exception(f"Failed to register fonts: {str(e)}")
 
 # Read the Excel file containing policyholder data
-try:
-    df = pd.read_excel("Generic_Template.xlsx", engine='openpyxl')
-    print(f"[OK] Excel file loaded successfully with {len(df)} rows")
-    print(f"[INFO] Available columns: {list(df.columns)}")
+# Robust Excel file loading with multiple fallback locations
+def load_excel_file():
+    """Load Excel file from multiple possible locations with error handling"""
+    possible_files = [
+        "Generic_Template.xlsx",  # Primary location (root)
+        "temp_uploads/Generic_Template.xlsx",  # Server upload location
+        "Generic_template.xlsx",  # Case variation
+        "temp_uploads/Generic_template.xlsx",  # Case variation in temp
+    ]
     
-    # Check if DataFrame is empty
-    if len(df) == 0:
-        print("[WARNING] Excel file is empty")
-        sys.exit(1)
-        
-except FileNotFoundError:
-    print("[ERROR] Excel file 'Generic_Template.xlsx' not found in the current directory")
+    # Also check for any .xlsx files in current directory as fallback
+    import glob
+    xlsx_files = glob.glob("*.xlsx")
+    possible_files.extend(xlsx_files)
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_files = []
+    for f in possible_files:
+        if f not in seen:
+            seen.add(f)
+            unique_files.append(f)
+    
+    print(f"[DEBUG] Looking for Excel file in these locations: {unique_files}")
+    
+    for file_path in unique_files:
+        if os.path.exists(file_path):
+            try:
+                print(f"[INFO] Attempting to load: {file_path}")
+                df = pd.read_excel(file_path, engine='openpyxl')
+                
+                # Validate the file has required columns
+                required_cols = ['Policy No', 'Arrears Amount']
+                available_cols = list(df.columns)
+                missing_cols = [col for col in required_cols if col not in available_cols]
+                
+                if missing_cols:
+                    print(f"[WARNING] File {file_path} missing required columns: {missing_cols}")
+                    continue
+                
+                if len(df) == 0:
+                    print(f"[WARNING] File {file_path} is empty")
+                    continue
+                
+                print(f"[OK] Excel file loaded successfully from: {file_path}")
+                print(f"[OK] Loaded {len(df)} rows with columns: {available_cols}")
+                return df
+                
+            except Exception as e:
+                print(f"[WARNING] Failed to load {file_path}: {str(e)}")
+                continue
+    
+    # If we get here, no valid file was found
+    print("[ERROR] No valid Excel file found!")
+    print("[ERROR] Searched locations:")
+    for f in unique_files:
+        exists = "✓" if os.path.exists(f) else "✗"
+        print(f"[ERROR]   {exists} {f}")
+    
+    print("[ERROR] Please ensure your Excel file is uploaded correctly")
     sys.exit(1)
-except Exception as e:
-    print(f"[ERROR] Error reading Excel file: {str(e)}")
-    sys.exit(1)
+
+# Load the Excel file using robust method
+df = load_excel_file()
+
+# Performance optimization for large files
+total_rows = len(df)
+if total_rows > 2000:
+    print(f"[INFO] Large file detected: {total_rows} rows")
+    print(f"[INFO] Estimated processing time: {total_rows * 2 / 60:.1f} minutes")
+    print(f"[INFO] This may take a while - please be patient...")
+elif total_rows > 5000:
+    print(f"[WARNING] Very large file: {total_rows} rows")
+    print(f"[WARNING] Processing may take 15-30 minutes")
+    print(f"[WARNING] Consider splitting the file into smaller batches if timeout occurs")
 
 # Create folders to store generated PDFs - dual folder structure
 import sys
@@ -171,15 +230,23 @@ styles['TableTextBold'] = ParagraphStyle(
 
 # Iterate through each row in the DataFrame to process individual policyholder data
 for index, row in df.iterrows():
-    print(f"[PROCESSING] Row {index + 1} of {len(df)}")
+    # Enhanced progress reporting for large files
+    total_rows = len(df)
+    current_row = index + 1
+    
+    if total_rows > 1000:
+        # For large files, show progress every 100 rows
+        if current_row % 100 == 0 or current_row == 1 or current_row == total_rows:
+            percentage = (current_row / total_rows) * 100
+            print(f"[PROGRESS] Row {current_row} of {total_rows} ({percentage:.1f}%)")
+    else:
+        # For smaller files, show every row
+        print(f"[PROCESSING] Row {current_row} of {total_rows}")
     
     # Extract relevant data from the current row
     owner1_title = row.get('Owner 1 Title', '')
     owner1_first_name = row.get('Owner 1 First Name', '')
     owner1_surname = row.get('Owner 1 Surname', '')
-    owner2_title = row.get('Owner 2 Title', '')
-    owner2_first_name = row.get('Owner 2 First Name', '')
-    owner2_surname = row.get('Owner 2 Surname', '')
     assignee_surname = row.get('Assignee Surname Corrected', '')
     owner1_address1 = row.get('Owner 1 Policy Address 1', '')
     owner1_address2 = row.get('Owner 1 Policy Address 2', '')
@@ -354,15 +421,6 @@ for index, row in df.iterrows():
 
     # Add recipient address
     address_lines = [name]
-    
-    # Add Owner 2 information if available
-    if (pd.notna(owner2_title) and str(owner2_title).strip()) or \
-       (pd.notna(owner2_first_name) and str(owner2_first_name).strip()) or \
-       (pd.notna(owner2_surname) and str(owner2_surname).strip()):
-        owner2_line = f"{owner2_title} {owner2_first_name} {owner2_surname}".strip()
-        if owner2_line:
-            address_lines.append(owner2_line)
-    
     if pd.notna(owner1_address1):
         address_lines.append(str(owner1_address1))
     if pd.notna(owner1_address2):
@@ -399,12 +457,11 @@ for index, row in df.iterrows():
     intro.drawOn(c, margin, y_pos - intro.height)
     y_pos -= intro.height + 8  # Increased breathing space before table
 
-    # Create and draw policy details table (new 5-column format)
+    # Create and draw policy details table (new 4-column format)
     table_headers = [
         Paragraph('Policy No.', styles['TableTextBold']),
         Paragraph('Payment Frequency', styles['TableTextBold']),
         Paragraph('Premium Amount (MUR)', styles['TableTextBold']),
-        Paragraph('No. of Instalments in Arrears', styles['TableTextBold']),
         Paragraph('Total Premium in Arrears (MUR)', styles['TableTextBold'])
     ]
     table_data = [
@@ -412,12 +469,12 @@ for index, row in df.iterrows():
             Paragraph(str(policy_no), styles['TableText']),
             Paragraph(str(frequency), styles['TableText']),
             Paragraph(f"{gross_premium:,.2f}", styles['TableText']),
-            Paragraph(str(no_installments), styles['TableText']),
             Paragraph(f"{amount:,.2f}", styles['TableText'])
         ]
     ]
     data = [table_headers] + table_data
-    table = Table(data, colWidths=[80, 70, 70, 90, 100])
+    # Adjust column widths to use full text width (total: ~495px for A4 with 50px margins)
+    table = Table(data, colWidths=[120, 120, 125, 130])
     table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, -1), 'Cambria'),
@@ -460,7 +517,7 @@ for index, row in df.iterrows():
     y_pos -= para2.height + 3
 
     # Point 2: Growth of Your Savings
-    text3 = "<font name='Cambria-Bold'>Growth of Your Savings:</font> Every premium contributes to building long-term savings that support your financial goals—be it retirement, children's education, funding your dream project, or financial security."
+    text3 = "<font name='Cambria-Bold'>Growth of Your Savings:</font> Every premium contributes to building long-term savings that support your financial goals,be it retirement, children's education, funding your dream project, or financial security."
     para3 = Paragraph(text3, styles['BodyText'])
     para3.wrapOn(c, width - 2 * margin - 25, height)
     # Position checkmark to align with first line of text (lower position)
@@ -583,11 +640,22 @@ for index, row in df.iterrows():
     tagline.wrapOn(c, width - 2 * margin, height)
     tagline.drawOn(c, margin, tagline_y_pos - tagline.height)
     
-    # Add computer generated statement in grey color
-    computer_generated_y_pos = tagline_y_pos - tagline.height - 8
+    # Add computer generated statement in grey color (center aligned, pushed lower)
+    computer_generated_y_pos = tagline_y_pos - tagline.height - 15  # Increased spacing from 8 to 15
+    
+    # Create center-aligned style for computer generated statement
+    computer_generated_style = ParagraphStyle(
+        name='ComputerGenerated',
+        fontName='Cambria',
+        fontSize=9,
+        leading=11,
+        alignment=1,  # Center alignment
+        textColor=colors.grey
+    )
+    
     computer_generated = Paragraph(
-        "<font color='grey'>This is a computer generated statement and requires no signature</font>",
-        styles['BodyText']
+        "This is a computer generated statement and requires no signature",
+        computer_generated_style
     )
     computer_generated.wrapOn(c, width - 2 * margin, height)
     computer_generated.drawOn(c, margin, computer_generated_y_pos - computer_generated.height)

@@ -240,21 +240,107 @@ const PDFGenerator = () => {
     }
 
     try {
+      console.log('[DEBUG] File upload details:', {
+        fileName: uploadedFile.name,
+        fileSize: uploadedFile.size,
+        fileType: uploadedFile.type,
+        lastModified: new Date(uploadedFile.lastModified).toISOString()
+      });
+
       const buffer = await uploadedFile.arrayBuffer();
+      console.log('[DEBUG] File read as ArrayBuffer, size:', buffer.byteLength);
+
       const workbook = XLSX.read(buffer, { type: 'buffer' });
+      console.log('[DEBUG] Workbook sheets:', workbook.SheetNames);
+
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
       const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-      // Validate required columns for Generic_template.xlsx format
+      console.log('[DEBUG] Parsed Excel data:', {
+        rowCount: jsonData.length,
+        firstRowKeys: Object.keys(jsonData[0] || {}),
+        sampleRow: jsonData[0]
+      });
+
+      // Special check for EMAIL_ID column issue
+      const hasEmailId = Object.keys(jsonData[0] || {}).includes('EMAIL_ID');
+      console.log('[DEBUG] EMAIL_ID column check:', {
+        hasEmailId: hasEmailId,
+        allColumns: Object.keys(jsonData[0] || {}),
+        expectedFile: 'output_sph.xlsx should have EMAIL_ID'
+      });
+
+      if (!hasEmailId) {
+        console.warn('[WARNING] The uploaded file does not contain EMAIL_ID column');
+        console.warn('[WARNING] Expected columns should include: EMAIL_ID, Policy No, Arrears Amount');
+        console.warn('[WARNING] Please verify you are uploading the correct output_sph.xlsx file');
+      }
+
+      // Validate required columns for Generic_template.xlsx format (flexible matching)
       const requiredColumns = ['Policy No', 'Arrears Amount', 'EMAIL_ID'];
       const optionalColumns = ['Owner 1 Title', 'Owner 1 First Name', 'Owner 1 Surname', 'Owner 1 Policy Address 1'];
 
       const availableColumns = Object.keys(jsonData[0] || {});
-      const missingColumns = requiredColumns.filter(col => !availableColumns.includes(col));
+
+      // Flexible column matching (case-insensitive and trimmed)
+      const normalizeColumnName = (name) => name.toString().trim().toLowerCase().replace(/\s+/g, ' ');
+      const normalizedAvailable = availableColumns.map(col => ({
+        original: col,
+        normalized: normalizeColumnName(col)
+      }));
+
+      const missingColumns = [];
+      const foundColumns = [];
+
+      requiredColumns.forEach(reqCol => {
+        const normalizedReq = normalizeColumnName(reqCol);
+        const found = normalizedAvailable.find(avail => avail.normalized === normalizedReq);
+
+        if (found) {
+          foundColumns.push(found.original);
+        } else {
+          // Try partial matching for common variations
+          const partialMatch = normalizedAvailable.find(avail =>
+            avail.normalized.includes('email') && normalizedReq.includes('email') ||
+            avail.normalized.includes('policy') && normalizedReq.includes('policy') ||
+            avail.normalized.includes('arrears') && normalizedReq.includes('arrears')
+          );
+
+          if (partialMatch) {
+            foundColumns.push(partialMatch.original);
+            console.log(`[INFO] Using column "${partialMatch.original}" for required "${reqCol}"`);
+          } else {
+            missingColumns.push(reqCol);
+          }
+        }
+      });
 
       if (missingColumns.length > 0) {
-        throw new Error(`Missing required columns: ${missingColumns.join(', ')}`);
+        console.error('[ERROR] Available columns:', availableColumns);
+        console.error('[ERROR] Missing required columns:', missingColumns);
+        console.error('[ERROR] File info:', {
+          fileName: file?.name,
+          fileSize: file?.size,
+          fileType: file?.type,
+          lastModified: file?.lastModified ? new Date(file.lastModified).toISOString() : 'unknown'
+        });
+        console.error('[ERROR] First few rows of data:', jsonData.slice(0, 3));
+
+        // For EMAIL_ID specifically, let's be more flexible
+        if (missingColumns.includes('EMAIL_ID')) {
+          console.warn('[WARNING] EMAIL_ID column missing - this may cause issues with email functionality');
+          console.warn('[WARNING] Proceeding anyway, but email features may not work');
+          // Remove EMAIL_ID from missing columns to allow processing
+          const otherMissing = missingColumns.filter(col => col !== 'EMAIL_ID');
+          if (otherMissing.length === 0) {
+            console.warn('[WARNING] Only EMAIL_ID was missing, allowing file to proceed');
+          } else {
+            throw new Error(`Missing critical columns: ${otherMissing.join(', ')}. Available columns: ${availableColumns.join(', ')}`);
+          }
+        } else {
+          throw new Error(`Missing required columns: ${missingColumns.join(', ')}. Available columns: ${availableColumns.join(', ')}`);
+        }
       }
 
       console.log('Available columns:', availableColumns);
@@ -1004,13 +1090,29 @@ NIC Team
     setGeneratedPdfPaths([]);
     setError('');
 
+    let progressInterval;
+
     try {
       // Python-based PDF generation (only method available)
       console.log('Starting Python PDF generation...');
-      setProgress(10);
+      setProgress(5);
+
+      // Start progress simulation based on data size
+      const totalRows = data.length;
+      const estimatedTimeMs = totalRows * 2000; // Estimate 2 seconds per PDF
+      progressInterval = setInterval(() => {
+        setProgress(prev => {
+          const newProgress = prev + (90 / (estimatedTimeMs / 1000)); // Progress to 90% over estimated time
+          return Math.min(newProgress, 90); // Cap at 90% until actual completion
+        });
+      }, 1000);
 
       const generatedFiles = await generatePDFsWithPython();
-      setProgress(30);
+      clearInterval(progressInterval);
+      setProgress(95);
+
+      // Update processed count with actual generated files
+      setProcessedCount(generatedFiles.length);
 
       console.log(`Python generated ${generatedFiles.length} PDFs`);
 
@@ -1036,12 +1138,12 @@ NIC Team
           const emailData = data.slice(0, generatedFiles.length).map((row, i) => {
             const name = `${row['Owner 1 Title'] || ''} ${row['Owner 1 First Name'] || ''} ${row['Owner 1 Surname'] || ''}`.trim() || 'Unknown';
             const policyNo = row['Policy No'] || `policy_${i}`;
-            
+
             // Create filename using same logic as Python scripts
             const safeName = sanitizeFilename(name);
             const safePolicy = sanitizeFilename(policyNo);
             const expectedFilename = `${safePolicy}_${safeName}.pdf`;
-            
+
             return {
               email: row['EMAIL_ID'] || '',
               name: name,
@@ -1140,6 +1242,10 @@ NIC Team
     } catch (error) {
       console.error('Processing error:', error);
       setError(`Processing failed: ${error.message}`);
+      // Clear any running progress intervals
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
     } finally {
       setProcessing(false);
     }

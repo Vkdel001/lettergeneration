@@ -36,8 +36,13 @@ def main():
     # Use Generic_Template.xlsx as the standard input filename for all templates
     expected_filename = 'Generic_Template.xlsx'
     
-    # Copy input file to expected location
+    # Copy input file to expected location with robust error handling
     try:
+        # First, verify input file exists
+        if not os.path.exists(args.input):
+            raise Exception(f"Input file does not exist: {args.input}")
+        
+        # Copy the file
         shutil.copy2(args.input, expected_filename)
         print(f"Copied input file '{args.input}' to '{expected_filename}'")
         
@@ -45,12 +50,74 @@ def main():
         if not os.path.exists(expected_filename):
             raise Exception(f"Failed to create {expected_filename}")
             
-        file_size = os.path.getsize(expected_filename)
-        print(f"Input file size: {file_size} bytes")
+        # Verify file size
+        input_size = os.path.getsize(args.input)
+        output_size = os.path.getsize(expected_filename)
+        
+        if input_size != output_size:
+            raise Exception(f"File size mismatch: input={input_size}, output={output_size}")
+            
+        print(f"Input file successfully copied: {output_size} bytes")
+        
+        # Validate the copied file has required columns
+        try:
+            import pandas as pd
+            test_df = pd.read_excel(expected_filename, engine='openpyxl')
+            available_cols = list(test_df.columns)
+            required_cols = ['Policy No', 'Arrears Amount']
+            
+            print(f"Copied file validation:")
+            print(f"  - Rows: {len(test_df)}")
+            print(f"  - Columns: {len(available_cols)}")
+            print(f"  - Column names: {available_cols}")
+            
+            missing_required = [col for col in required_cols if col not in available_cols]
+            if missing_required:
+                raise Exception(f"Copied file missing required columns: {missing_required}")
+            
+            has_email = 'EMAIL_ID' in available_cols
+            print(f"  - EMAIL_ID present: {has_email}")
+            
+            if not has_email:
+                print("WARNING: EMAIL_ID column not found - email functionality may not work")
+            
+            print("File validation successful!")
+            
+        except Exception as validation_error:
+            print(f"WARNING: File validation failed: {validation_error}")
+            print("Proceeding anyway, but there may be issues...")
+        
+        # Also create a timestamped backup for debugging
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_name = f"Generic_Template_backup_{timestamp}.xlsx"
+        shutil.copy2(expected_filename, backup_name)
+        print(f"Created backup: {backup_name}")
         
     except Exception as e:
         print(f"Error copying input file: {e}", file=sys.stderr)
-        sys.exit(1)
+        
+        # Try to find alternative files as fallback
+        print("Attempting to find alternative Excel files...", file=sys.stderr)
+        import glob
+        xlsx_files = glob.glob("*.xlsx") + glob.glob("temp_uploads/*.xlsx")
+        
+        if xlsx_files:
+            print(f"Found alternative files: {xlsx_files}", file=sys.stderr)
+            for alt_file in xlsx_files:
+                if os.path.exists(alt_file) and alt_file != expected_filename:
+                    try:
+                        shutil.copy2(alt_file, expected_filename)
+                        print(f"Using alternative file: {alt_file}", file=sys.stderr)
+                        break
+                    except Exception as alt_error:
+                        print(f"Failed to use {alt_file}: {alt_error}", file=sys.stderr)
+                        continue
+        
+        # Final check
+        if not os.path.exists(expected_filename):
+            print(f"FATAL: Could not create {expected_filename}", file=sys.stderr)
+            sys.exit(1)
     
     # Change to the script directory to ensure relative paths work
     original_cwd = os.getcwd()
@@ -61,8 +128,11 @@ def main():
     try:
         # Execute the template script with output folder argument
         print(f"Executing template: {args.template}")
+        # Increased timeout for large files (90 minutes for processing thousands of rows)
+        timeout_seconds = 5400  # 90 minutes
+        print(f"Starting template execution with {timeout_seconds/60:.0f} minute timeout...")
         result = subprocess.run([sys.executable, args.template, '--output', args.output], 
-                              capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=300)
+                              capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout_seconds)
         
         if result.returncode != 0:
             print(f"Template execution failed with return code {result.returncode}", file=sys.stderr)
@@ -101,7 +171,7 @@ def main():
         print(f"Successfully generated {moved_files} PDF files in {args.output}")
         
     except subprocess.TimeoutExpired:
-        print("Template execution timed out (5 minutes)", file=sys.stderr)
+        print(f"Template execution timed out ({timeout_seconds/60:.0f} minutes)", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
         print(f"Error executing template: {e}", file=sys.stderr)
