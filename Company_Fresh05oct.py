@@ -120,7 +120,7 @@ elif total_rows > 5000:
     print(f"[WARNING] Processing may take 15-30 minutes")
     print(f"[WARNING] Consider splitting the file into smaller batches if timeout occurs")
 
-# Create folders to store generated PDFs - dual folder structure
+# Create a folder to store generated PDFs - use dynamic folder name
 import sys
 output_folder = "output_letters"  # Default folder
 
@@ -149,13 +149,13 @@ print(f"[INFO] Unprotected PDFs folder: {unprotected_folder}")
 # Define custom paragraph styles explicitly
 styles = {}
 
-# Define custom 'BodyText' style for body paragraphs (increased size)
+# Define custom 'BodyText' style for body paragraphs
 styles['BodyText'] = ParagraphStyle(
     name='BodyText',
     fontName='Cambria',
-    fontSize=10,
-    leading=11,
-    spaceAfter=4,
+    fontSize=10.5,
+    leading=12,
+    spaceAfter=6,
     alignment=TA_JUSTIFY
 )
 
@@ -170,22 +170,22 @@ styles['disclaimerText'] = ParagraphStyle(
 
 )
 
-# Define custom 'BoldText' style for headings (increased size)
+# Define custom 'BoldText' style for headings
 styles['BoldText'] = ParagraphStyle(
     name='BoldText',
     fontName='Cambria-Bold',
-    fontSize=10.5,
-    leading=12,
-    spaceAfter=4
+    fontSize=11,
+    leading=13,
+    spaceAfter=6
 )
 
-# Define custom 'SalutationText' style for the "Dear..." line and address (increased size)
+# Define custom 'SalutationText' style for the "Dear..." line and address
 styles['SalutationText'] = ParagraphStyle(
     name='SalutationText',
     fontName='Cambria-Bold',
-    fontSize=10,
+    fontSize=10.5,
     leading=6,
-    spaceAfter=3
+    spaceAfter=5
 )
 
 # Define custom 'FooterText' style for the absolute footer at the bottom
@@ -235,10 +235,10 @@ for index, row in df.iterrows():
     current_row = index + 1
     
     if total_rows > 1000:
-        # For large files, show progress every 50 rows (more frequent updates)
-        if current_row % 50 == 0 or current_row == 1 or current_row == total_rows:
+        # For large files, show progress every 100 rows
+        if current_row % 100 == 0 or current_row == 1 or current_row == total_rows:
             percentage = (current_row / total_rows) * 100
-            print(f"[PROGRESS] Processing row {current_row} of {total_rows} ({percentage:.1f}%) - Starting PDF generation...")
+            print(f"[PROGRESS] Row {current_row} of {total_rows} ({percentage:.1f}%)")
     else:
         # For smaller files, show every row
         print(f"[PROCESSING] Row {current_row} of {total_rows}")
@@ -335,8 +335,6 @@ for index, row in df.iterrows():
         safe_policy = re.sub(r'[^\w\s-]', '_', str(policy_no)).strip()
 
     # Generate QR Code for payment
-    if total_rows > 1000 and current_row % 50 == 0:
-        print(f"[PROGRESS] Row {current_row}: Generating QR code...")
     try:
         payload = {
             "MerchantId": 151,
@@ -374,9 +372,6 @@ for index, row in df.iterrows():
             "AdditionalPurposeTransaction": str(nic)
         }
         
-        if total_rows > 1000 and current_row % 50 == 0:
-            print(f"[PROGRESS] Row {current_row}: Making API call for QR code...")
-        
         response = requests.post(
             "https://api.zwennpay.com:9425/api/v1.0/Common/GetMerchantQR",
             headers={"accept": "text/plain", "Content-Type": "application/json"},
@@ -408,21 +403,19 @@ for index, row in df.iterrows():
     protected_pdf_filename = f"{protected_folder}/{safe_policy}_{safe_name}.pdf"
     unprotected_pdf_filename = f"{unprotected_folder}/{safe_policy}_{safe_name}.pdf"
     
-    if total_rows > 1000 and current_row % 50 == 0:
-        print(f"[PROGRESS] Row {current_row}: Creating PDF document...")
-    
     # Create unprotected PDF first
     c = canvas.Canvas(unprotected_pdf_filename, pagesize=A4)
     width, height = A4
     margin = 50
-    bottom_margin = 60  # Increased for pre-printed stationery address space
+    bottom_margin = 20
     y_pos = height - margin - 80
 
     # Store the top position of the date
     date_top_y = y_pos
 
-    # Add arrears processing date from Excel file
-    date_para = Paragraph(f"{arrears_date_formatted}", styles['SalutationText'])
+    # Add current date
+    current_date = datetime.now().strftime("%d-%B-%Y")
+    date_para = Paragraph(f"{current_date}", styles['SalutationText'])
     date_para.wrapOn(c, width - margin, height)
     date_para.drawOn(c, margin, y_pos - date_para.height)
     y_pos -= date_para.height + 12
@@ -443,242 +436,161 @@ for index, row in df.iterrows():
         addr_para.wrapOn(c, width - 2 * margin, height)
         addr_para.drawOn(c, margin, y_pos - addr_para.height)
         y_pos -= addr_para.height + 6
-    y_pos -= 8  # Increased space between address and salutation
+    y_pos -= 2
 
-    # Add salutation - static for Company
-    salutation_text = "Dear Customer Name,"
+    # Add salutation
+    salutation_text = f"Dear Valued Customer,"
     salutation = Paragraph(salutation_text, styles['BodyText'])
     salutation.wrapOn(c, width - 2 * margin, height)
     salutation.drawOn(c, margin, y_pos - salutation.height)
-    y_pos -= salutation.height + 4
+    y_pos -= salutation.height +8
+
+    
 
     # Add subject line
     subject = Paragraph("RE: ARREARS ON YOUR LIFE INSURANCE POLICY", styles['BoldText'])
     subject.wrapOn(c, width - 2 * margin, height)
     subject.drawOn(c, margin, y_pos - subject.height)
-    y_pos -= subject.height + 4
+    y_pos -= subject.height + 8
 
-    # Add new introductory paragraph (matching new format)
-    intro_text = f"At NIC, we value the trust you have placed in us to protect what matters most— your financial future & that of your loved ones. We are writing to remind you that your life insurance policy shows a <font name='Cambria-Bold'>premium amount in arrears as shown below:</font>"
+    # Add introductory paragraph
+    intro_text = f"We write to inform you that, as of <font name='Cambria-Bold'>{arrears_date_formatted}</font>, an amount of <font name='Cambria-Bold'>MUR {amount:,.2f}</font> remains outstanding on your life insurance policy, as detailed below:"
     intro = Paragraph(intro_text, styles['BodyText'])
     intro.wrapOn(c, width - 2 * margin, height)
     intro.drawOn(c, margin, y_pos - intro.height)
-    y_pos -= intro.height + 8  # Increased breathing space before table
+    y_pos -= intro.height + 8
 
-    # Create and draw policy details table (new 4-column format)
+    # Create and draw policy details table
     table_headers = [
         Paragraph('Policy No.', styles['TableTextBold']),
         Paragraph('Payment Frequency', styles['TableTextBold']),
         Paragraph('Premium Amount (MUR)', styles['TableTextBold']),
-        Paragraph('Total Premium in Arrears (MUR)', styles['TableTextBold'])
+        Paragraph('No. of Instalments in Arrears', styles['TableTextBold']),
+        Paragraph('Total Premium Amount in Arrears (MUR)', styles['TableTextBold'])
     ]
     table_data = [
         [
             Paragraph(str(policy_no), styles['TableText']),
             Paragraph(str(frequency), styles['TableText']),
             Paragraph(f"{gross_premium:,.2f}", styles['TableText']),
+            Paragraph(str(no_installments), styles['TableText']),
             Paragraph(f"{amount:,.2f}", styles['TableText'])
         ]
     ]
     data = [table_headers] + table_data
-    # Adjust column widths to use full text width (total: ~495px for A4 with 50px margins)
-    table = Table(data, colWidths=[120, 120, 125, 130])
+    table = Table(data, colWidths=[80, 70, 70, 90, 100])
     table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, -1), 'Cambria'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('FONTSIZE', (0, 0), (-1, -1), 11),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ROWHEIGHT', (0, 0), (-1, -1), 20),
-        ('LEFTPADDING', (0, 0), (-1, -1), 3),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ('ROWHEIGHT', (0, 0), (-1, -1), 15),
+        ('LEFTPADDING', (0, 0), (-1, -1), 2),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
         ('TEXTWRAP', (0, 0), (-1, -1), 'CJK'),
     ]))
     table_width, table_height = table.wrap(width - 2 * margin, 0)
     table.drawOn(c, margin, y_pos - table_height)
-    y_pos -= table_height + 10  # Increased breathing space after table
+    y_pos -= table_height + 12
 
-    # Add new body content (matching new format)
-    text1 = "Keeping your policy up to date is not only about making a payment. It ensures:"
+    # Add body text
+    text1 = "We kindly urge you to settle this outstanding amount as soon as possible to ensure that your insurance cover remains active and fully effective."
     para1 = Paragraph(text1, styles['BodyText'])
     para1.wrapOn(c, width - 2 * margin, height)
     para1.drawOn(c, margin, y_pos - para1.height)
-    y_pos -= para1.height + 4
+    y_pos -= para1.height + 8
 
-    # Function to draw a professional checkmark
-    def draw_checkmark(canvas, x, y, size=8):
-        """Draw a professional green checkmark at the specified position"""
-        canvas.setStrokeColor(colors.green)
-        canvas.setLineWidth(1.5)
-        # Draw checkmark as two connected lines
-        canvas.line(x, y, x + size/3, y - size/3)  # First part of check
-        canvas.line(x + size/3, y - size/3, x + size, y + size/3)  # Second part of check
-    
-    # Add checkmark bullet points with drawn checkmarks
-    # Point 1: Continuity of Protection
-    text2 = "<font name='Cambria-Bold'>Continuity of Protection:</font> You and your family remain covered against life's unexpected events. Even a short lapse could mean losing valuable protection just when it is most needed."
+    text2 = "As your insurer, we wish to remind you of the following:"
     para2 = Paragraph(text2, styles['BodyText'])
-    para2.wrapOn(c, width - 2 * margin - 25, height)
-    # Position checkmark to align with first line of text (lower position)
-    draw_checkmark(c, margin + 10, y_pos - 8, 8)
-    para2.drawOn(c, margin + 25, y_pos - para2.height)
-    y_pos -= para2.height + 3
+    para2.wrapOn(c, width - 2 * margin, height)
+    para2.drawOn(c, margin, y_pos - para2.height)
+    y_pos -= para2.height + 6
 
-    # Point 2: Growth of Your Savings
-    text3 = "<font name='Cambria-Bold'>Growth of Your Savings:</font> Every premium contributes to building long-term savings that support your financial goals,be it retirement, children's education, funding your dream project, or financial security."
+    text3 = "1.	Your life insurance policy provides essential protection and financial security for you and your loved ones against unforeseen circumstances."
     para3 = Paragraph(text3, styles['BodyText'])
-    para3.wrapOn(c, width - 2 * margin - 25, height)
-    # Position checkmark to align with first line of text (lower position)
-    draw_checkmark(c, margin + 10, y_pos - 8, 8)
-    para3.drawOn(c, margin + 25, y_pos - para3.height)
-    y_pos -= para3.height + 3
+    para3.wrapOn(c, width - 2 * margin - 10, height)
+    para3.drawOn(c, margin + 10, y_pos - para3.height)
+    y_pos -= para3.height + 6
 
-    # Point 3: Peace of Mind
-    text4 = "<font name='Cambria-Bold'>Peace of Mind:</font> By keeping your insurance policy lapse-free and premium up to date, you can live with confidence, knowing that your financial safety net is intact for you and your dear ones."
+    text4 = "2.	Regular premium payments help your policy fund grow over time."
     para4 = Paragraph(text4, styles['BodyText'])
-    para4.wrapOn(c, width - 2 * margin - 25, height)
-    # Position checkmark to align with first line of text (lower position)
-    draw_checkmark(c, margin + 10, y_pos - 8, 8)
-    para4.drawOn(c, margin + 25, y_pos - para4.height)
-    y_pos -= para4.height + 8  # Breathing space before next paragraph
+    para4.wrapOn(c, width - 2 * margin - 10, height)
+    para4.drawOn(c, margin + 10, y_pos - para4.height)
+    y_pos -= para4.height + 6
 
-    text6 = "Accordingly we encourage you to settle your outstanding premium at the earliest opportunity to ensure uninterrupted cover and continued growth of your savings and by acting now, you avoid the risk of:"
+    text5 = "3.	Failure to settle outstanding arrears may impact the payment of future benefits and claims."
+    para5 = Paragraph(text5, styles['BodyText'])
+    para5.wrapOn(c, width - 2 * margin - 10, height)
+    para5.drawOn(c, margin + 10, y_pos - para5.height)
+    y_pos -= para5.height + 6
+
+    text6 = "4.	If you are facing financial difficulties or would like to arrange a payment plan, please contact us on 602 3315 or email nicarlife@nicl.mu at your earliest convenience."
     para6 = Paragraph(text6, styles['BodyText'])
-    para6.wrapOn(c, width - 2 * margin, height)
-    para6.drawOn(c, margin, y_pos - para6.height)
-    y_pos -= para6.height + 3
+    para6.wrapOn(c, width - 2 * margin - 10, height)
+    para6.drawOn(c, margin + 10, y_pos - para6.height)
+    y_pos -= para6.height + 8
 
-    # Add bullet points for risks (more compact)
-    text7 = "• Losing valuable accumulated benefits;"
-    para7 = Paragraph(text7, styles['BodyText'])
-    para7.wrapOn(c, width - 2 * margin - 10, height)
-    para7.drawOn(c, margin + 10, y_pos - para7.height)
-    y_pos -= para7.height + 2
+   
 
-    text8 = "• Facing delays, reinstatement requirements, or medical reviews if the policy lapses; and"
-    para8 = Paragraph(text8, styles['BodyText'])
-    para8.wrapOn(c, width - 2 * margin - 10, height)
-    para8.drawOn(c, margin + 10, y_pos - para8.height)
-    y_pos -= para8.height + 2
+    text8 = "For your convenience, you may now settle payments via the QR code below using apps such as Juice or MyT Money."
+    para8 = Paragraph(text8, styles['BoldText'])
+    para8.wrapOn(c, width - 2 * margin, height)
+    para8.drawOn(c, margin, y_pos - para8.height)
+    y_pos -= para8.height + 15
 
-    text9 = "• Exposing your loved ones to uncertainty at a time when security matters most."
-    para9 = Paragraph(text9, styles['BodyText'])
-    para9.wrapOn(c, width - 2 * margin - 10, height)
-    para9.drawOn(c, margin + 10, y_pos - para9.height)
-    y_pos -= para9.height + 6
-
-    # Add new line for payment facilities (not a bullet point)
-    text_payment_facilities = "Should you wish to avail of a facility to settle your arrears, kindly contact us on +230 602 3315 for assistance."
-    para_payment_facilities = Paragraph(text_payment_facilities, styles['BodyText'])
-    para_payment_facilities.wrapOn(c, width - 2 * margin, height)
-    para_payment_facilities.drawOn(c, margin, y_pos - para_payment_facilities.height)
-    y_pos -= para_payment_facilities.height + 10  # Increased breathing space after this section
-
-    # Add "How to Settle Quickly and Easily?" section in black
-    text10 = "<font name='Cambria-Bold'>How to Settle Quickly and Easily?</font>"
-    para10 = Paragraph(text10, styles['BoldText'])
-    para10.wrapOn(c, width - 2 * margin, height)
-    para10.drawOn(c, margin, y_pos - para10.height)
-    y_pos -= para10.height + 3
-
-    text11 = "Payment can be made through online, mobile app, branches or bank transfer. For your convenience, you may also settle payments instantly via the MauCAS QR Code (Scan to Pay) below using any mobile banking app such as Juice, MauBank WithMe, Blink, MyT Money, or other supported applications."
-    para11 = Paragraph(text11, styles['BodyText'])
-    para11.wrapOn(c, width - 2 * margin, height)
-    para11.drawOn(c, margin, y_pos - para11.height)
-    y_pos -= para11.height + 10  # Space before QR code section
-
-    # Compact QR code section with logos for single page layout
-    if os.path.exists(qr_filename):
-        page_center_x = width / 2
-        
-        # Add maucas logo (bigger size using available space)
-        if os.path.exists("maucas2.jpeg"):
-            img = ImageReader("maucas2.jpeg")
-            img_width = 110  # Increased from 85 to 110 for better visibility on letterhead
-            img_height = img_width * (img.getSize()[1] / img.getSize()[0])
-            logo_x = page_center_x - (img_width / 2)
-            c.drawImage(img, logo_x, y_pos - img_height, width=img_width, height=img_height)
-            y_pos -= img_height + 2
-        elif os.path.exists("maucas.jpeg"):
-            img = ImageReader("maucas.jpeg")
-            img_width = 110  # Increased from 85 to 110 for better visibility on letterhead
-            img_height = img_width * (img.getSize()[1] / img.getSize()[0])
-            logo_x = page_center_x - (img_width / 2)
-            c.drawImage(img, logo_x, y_pos - img_height, width=img_width, height=img_height)
-            y_pos -= img_height + 2
-        
-        # Add QR code (optimal size for scanning)
-        qr_size = 100  # Back to 100px for reliable scanning
-        qr_x = page_center_x - (qr_size / 2)
-        c.drawImage(qr_filename, qr_x, y_pos - qr_size, width=qr_size, height=qr_size)
-        y_pos -= qr_size + 2
-        
-        # Add ZwennPay logo (smaller size)
-        if os.path.exists("zwennPay.jpg"):
-            zwenn_img = ImageReader("zwennPay.jpg")
-            zwenn_width = 50  # Smaller for compact layout
-            zwenn_height = zwenn_width * (zwenn_img.getSize()[1] / zwenn_img.getSize()[0])
-            zwenn_x = page_center_x - (zwenn_width / 2)
-            c.drawImage(zwenn_img, zwenn_x, y_pos - zwenn_height, width=zwenn_width, height=zwenn_height)
-            y_pos -= zwenn_height + 4
-        else:
-            print(f"⚠️ Warning: zwennPay.jpg not found - skipping ZwennPay logo")
-            y_pos -= 4
-    else:
-        print(f"⚠️ Warning: QR code file not found - skipping QR section")
-        y_pos -= 8
-
-    # Compact footer section for single page (move closer to QR)
-    footer_start_y = y_pos - 2
+    # Add logo and QR code vertically stacked and center aligned
+    logo_qr_y_position = y_pos - 10  # Starting position for logo and QR code (reduced spacing)
     
-    # Compact footer format
+    # Calculate center position for horizontal alignment
+    page_center_x = width / 2
+    
+    # Add logo image (centered horizontally)
+    if os.path.exists("maucas.jpeg"):
+        img = ImageReader("maucas.jpeg")
+        img_width = 120
+        img_height = img_width * (img.getSize()[1] / img.getSize()[0])
+        # Center the logo horizontally
+        logo_x = page_center_x - (img_width / 2)
+        c.drawImage(img, logo_x, logo_qr_y_position - img_height, width=img_width, height=img_height)
+        logo_qr_y_position -= img_height + 10  # Move down for QR code with spacing
+
+    # Add QR code below logo (centered horizontally)
+    if os.path.exists(qr_filename):
+        qr_size = 100
+        # Center the QR code horizontally
+        qr_x = page_center_x - (qr_size / 2)
+        c.drawImage(qr_filename, qr_x, logo_qr_y_position - qr_size, width=qr_size, height=qr_size)
+        logo_qr_y_position -= qr_size + 10  # Update position after QR code
+    
+    y_pos = logo_qr_y_position - 10  # Update y_pos to continue below logo/QR stack
+
+    # Add footer text
+    remaining_height = max(bottom_margin + 30, y_pos - 30)
     footer1 = Paragraph(
-        "<i>If you have already settled this amount, please accept our thanks and disregard this reminder.</i>",
+        "If you have already cleared this amount, kindly disregard this letter.",
         styles['BodyText']
     )
     footer1.wrapOn(c, width - 2 * margin, height)
-    footer1.drawOn(c, margin, footer_start_y - footer1.height)
+    footer1.drawOn(c, margin, remaining_height - footer1.height)
 
-    # Add NIC tagline (with more breathing space)
-    tagline_y_pos = footer_start_y - footer1.height - 6  # Increased breathing space before tagline
-    tagline = Paragraph(
-        "We appreciate your commitment for protection and financial wellbeing<br/><font name='Cambria-Bold'>NIC - Serving you, Serving the Nation</font>",
-        styles['BodyText']
+    # Add agent number
+    remaining_height -= footer1.height + 10
+    agent_text_height = 0
+    if pd.notna(assignee_surname) and str(assignee_surname).strip() not in ['', 'nan', 'NaN']:
+        agent_text = Paragraph(f"{assignee_surname}", styles['BodyText'])
+        agent_text.wrapOn(c, width - 2 * margin, height)
+        agent_text.drawOn(c, margin, remaining_height - agent_text.height)
+        agent_text_height = agent_text.height
+    remaining_height -= agent_text_height
+
+    # Add absolute footer
+    footer2 = Paragraph(
+        "This is a computer-generated letter and does not require any signature.",
+        styles['disclaimerText']
     )
-    tagline.wrapOn(c, width - 2 * margin, height)
-    tagline.drawOn(c, margin, tagline_y_pos - tagline.height)
-    
-    # Add assignee surname if present (between NIC tagline and computer generated statement)
-    assignee_y_pos = tagline_y_pos - tagline.height - 8  # Small gap after NIC tagline
-    if assignee_surname and pd.notna(assignee_surname) and str(assignee_surname).strip():
-        assignee_text = str(assignee_surname).strip()
-        assignee_para = Paragraph(
-            f"{assignee_text}",
-            styles['BodyText']
-        )
-        assignee_para.wrapOn(c, width - 2 * margin, height)
-        assignee_para.drawOn(c, margin, assignee_y_pos - assignee_para.height)
-        assignee_y_pos -= assignee_para.height + 8  # Gap after assignee name
-    
-    # Add computer generated statement in grey color (center aligned, pushed lower)
-    computer_generated_y_pos = assignee_y_pos - 17  # Spacing before computer generated statement
-    
-    # Create center-aligned style for computer generated statement
-    computer_generated_style = ParagraphStyle(
-        name='ComputerGenerated',
-        fontName='Cambria',
-        fontSize=9,
-        leading=11,
-        alignment=1,  # Center alignment
-        textColor=colors.grey
-    )
-    
-    computer_generated = Paragraph(
-        "This is a computer generated statement and requires no signature",
-        computer_generated_style
-    )
-    computer_generated.wrapOn(c, width - 2 * margin, height)
-    computer_generated.drawOn(c, margin, computer_generated_y_pos - computer_generated.height)
+    footer2.wrapOn(c, width - 2 * margin, height)
+    footer2.drawOn(c, margin, bottom_margin)
 
     # Save the unprotected PDF
     c.save()
@@ -721,15 +633,14 @@ for index, row in df.iterrows():
         except Exception as copy_error:
             print(f"❌ Failed to copy PDF: {str(copy_error)}")
 
+    print(f"✅ PDFs generated successfully for {name}")
+    print(f"   📁 Protected: {protected_pdf_filename}")
+    print(f"   📁 Unprotected: {unprotected_pdf_filename}")
+
     # Clean up QR code file
     if os.path.exists(qr_filename):
         os.remove(qr_filename)
 
-    if total_rows > 1000 and current_row % 50 == 0:
-        print(f"[PROGRESS] Row {current_row}: PDF completed successfully!")
-    
-    print(f"✅ PDFs generated successfully for {name}")
-    print(f"   📁 Protected: {protected_pdf_filename}")
-    print(f"   📁 Unprotected: {unprotected_pdf_filename}")
+    print(f"✅ PDF generated successfully for {name}")
 
 print(f"🎉 Script completed. Processed {len(df)} rows total.")

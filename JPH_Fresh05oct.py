@@ -235,10 +235,10 @@ for index, row in df.iterrows():
     current_row = index + 1
     
     if total_rows > 1000:
-        # For large files, show progress every 50 rows (more frequent updates)
-        if current_row % 50 == 0 or current_row == 1 or current_row == total_rows:
+        # For large files, show progress every 100 rows
+        if current_row % 100 == 0 or current_row == 1 or current_row == total_rows:
             percentage = (current_row / total_rows) * 100
-            print(f"[PROGRESS] Processing row {current_row} of {total_rows} ({percentage:.1f}%) - Starting PDF generation...")
+            print(f"[PROGRESS] Row {current_row} of {total_rows} ({percentage:.1f}%)")
     else:
         # For smaller files, show every row
         print(f"[PROCESSING] Row {current_row} of {total_rows}")
@@ -335,8 +335,6 @@ for index, row in df.iterrows():
         safe_policy = re.sub(r'[^\w\s-]', '_', str(policy_no)).strip()
 
     # Generate QR Code for payment
-    if total_rows > 1000 and current_row % 50 == 0:
-        print(f"[PROGRESS] Row {current_row}: Generating QR code...")
     try:
         payload = {
             "MerchantId": 151,
@@ -374,9 +372,6 @@ for index, row in df.iterrows():
             "AdditionalPurposeTransaction": str(nic)
         }
         
-        if total_rows > 1000 and current_row % 50 == 0:
-            print(f"[PROGRESS] Row {current_row}: Making API call for QR code...")
-        
         response = requests.post(
             "https://api.zwennpay.com:9425/api/v1.0/Common/GetMerchantQR",
             headers={"accept": "text/plain", "Content-Type": "application/json"},
@@ -407,10 +402,6 @@ for index, row in df.iterrows():
     # Create PDF filenames for both protected and unprotected versions
     protected_pdf_filename = f"{protected_folder}/{safe_policy}_{safe_name}.pdf"
     unprotected_pdf_filename = f"{unprotected_folder}/{safe_policy}_{safe_name}.pdf"
-    
-    if total_rows > 1000 and current_row % 50 == 0:
-        print(f"[PROGRESS] Row {current_row}: Creating PDF document...")
-    
     # Create unprotected PDF first
     c = canvas.Canvas(unprotected_pdf_filename, pagesize=A4)
     width, height = A4
@@ -421,8 +412,9 @@ for index, row in df.iterrows():
     # Store the top position of the date
     date_top_y = y_pos
 
-    # Add arrears processing date from Excel file
-    date_para = Paragraph(f"{arrears_date_formatted}", styles['SalutationText'])
+    # Add current date
+    current_date = datetime.now().strftime("%d-%B-%Y")
+    date_para = Paragraph(f"{current_date}", styles['SalutationText'])
     date_para.wrapOn(c, width - margin, height)
     date_para.drawOn(c, margin, y_pos - date_para.height)
     y_pos -= date_para.height + 12
@@ -445,8 +437,8 @@ for index, row in df.iterrows():
         y_pos -= addr_para.height + 6
     y_pos -= 8  # Increased space between address and salutation
 
-    # Add salutation - static for Company
-    salutation_text = "Dear Customer Name,"
+    # Add salutation
+    salutation_text = f"Dear Valued Customers,"
     salutation = Paragraph(salutation_text, styles['BodyText'])
     salutation.wrapOn(c, width - 2 * margin, height)
     salutation.drawOn(c, margin, y_pos - salutation.height)
@@ -594,14 +586,14 @@ for index, row in df.iterrows():
         # Add maucas logo (bigger size using available space)
         if os.path.exists("maucas2.jpeg"):
             img = ImageReader("maucas2.jpeg")
-            img_width = 110  # Increased from 85 to 110 for better visibility on letterhead
+            img_width = 85  # Increased from 70 to 85 for better visibility
             img_height = img_width * (img.getSize()[1] / img.getSize()[0])
             logo_x = page_center_x - (img_width / 2)
             c.drawImage(img, logo_x, y_pos - img_height, width=img_width, height=img_height)
             y_pos -= img_height + 2
         elif os.path.exists("maucas.jpeg"):
             img = ImageReader("maucas.jpeg")
-            img_width = 110  # Increased from 85 to 110 for better visibility on letterhead
+            img_width = 85  # Increased from 70 to 85 for better visibility
             img_height = img_width * (img.getSize()[1] / img.getSize()[0])
             logo_x = page_center_x - (img_width / 2)
             c.drawImage(img, logo_x, y_pos - img_height, width=img_width, height=img_height)
@@ -648,20 +640,8 @@ for index, row in df.iterrows():
     tagline.wrapOn(c, width - 2 * margin, height)
     tagline.drawOn(c, margin, tagline_y_pos - tagline.height)
     
-    # Add assignee surname if present (between NIC tagline and computer generated statement)
-    assignee_y_pos = tagline_y_pos - tagline.height - 8  # Small gap after NIC tagline
-    if assignee_surname and pd.notna(assignee_surname) and str(assignee_surname).strip():
-        assignee_text = str(assignee_surname).strip()
-        assignee_para = Paragraph(
-            f"{assignee_text}",
-            styles['BodyText']
-        )
-        assignee_para.wrapOn(c, width - 2 * margin, height)
-        assignee_para.drawOn(c, margin, assignee_y_pos - assignee_para.height)
-        assignee_y_pos -= assignee_para.height + 8  # Gap after assignee name
-    
     # Add computer generated statement in grey color (center aligned, pushed lower)
-    computer_generated_y_pos = assignee_y_pos - 17  # Spacing before computer generated statement
+    computer_generated_y_pos = tagline_y_pos - tagline.height - 15  # Increased spacing from 8 to 15
     
     # Create center-aligned style for computer generated statement
     computer_generated_style = ParagraphStyle(
@@ -725,9 +705,6 @@ for index, row in df.iterrows():
     if os.path.exists(qr_filename):
         os.remove(qr_filename)
 
-    if total_rows > 1000 and current_row % 50 == 0:
-        print(f"[PROGRESS] Row {current_row}: PDF completed successfully!")
-    
     print(f"✅ PDFs generated successfully for {name}")
     print(f"   📁 Protected: {protected_pdf_filename}")
     print(f"   📁 Unprotected: {unprotected_pdf_filename}")
