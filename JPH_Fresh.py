@@ -24,7 +24,12 @@ import os
 import re
 from datetime import datetime
 from reportlab.lib.utils import ImageReader
-from PyPDF2 import PdfFileReader, PdfFileWriter
+try:
+    from PyPDF2 import PdfReader, PdfWriter
+    PYPDF2_NEW = True
+except ImportError:
+    from PyPDF2 import PdfFileReader as PdfReader, PdfFileWriter as PdfWriter
+    PYPDF2_NEW = False
 
 # Verify font files exist
 cambria_regular_path = os.path.join(os.path.dirname(__file__), 'fonts', 'cambria.ttf')
@@ -703,12 +708,16 @@ for index, row in df.iterrows():
             
             # Read the unprotected PDF
             with open(unprotected_pdf_filename, 'rb') as input_file:
-                reader = PdfFileReader(input_file)
-                writer = PdfFileWriter()
+                reader = PdfReader(input_file)
+                writer = PdfWriter()
                 
-                # Copy all pages
-                for page_num in range(reader.getNumPages()):
-                    writer.addPage(reader.getPage(page_num))
+                # Copy all pages (compatible with both old and new PyPDF2)
+                if PYPDF2_NEW:
+                    for page in reader.pages:
+                        writer.add_page(page)
+                else:
+                    for page_num in range(reader.getNumPages()):
+                        writer.addPage(reader.getPage(page_num))
                 
                 # Encrypt with NIC as password
                 writer.encrypt(password)
