@@ -6,6 +6,11 @@ import QRCode from 'qrcode';
 import emailjs from '@emailjs/browser';
 import sicomLogo from './nic2.jpeg'; // Ensure this file exists
 
+// Dynamic API URL - works both locally and on VPS
+const API_BASE = window.location.hostname === 'localhost' 
+  ? 'http://localhost:3001' 
+  : `http://${window.location.hostname}:3001`;
+
 const PDFGenerator = () => {
   const [file, setFile] = useState(null);
   const [data, setData] = useState([]);
@@ -53,7 +58,7 @@ const PDFGenerator = () => {
       console.log('[DEBUG] Starting template fetch, setting loading to true');
       setTemplatesLoading(true);
       try {
-        const response = await fetch('http://localhost:3001/api/templates');
+        const response = await fetch(`${API_BASE}/api/templates`);
         const data = await response.json();
         console.log('[DEBUG] Server response for templates:', data);
         if (data.success) {
@@ -84,7 +89,7 @@ const PDFGenerator = () => {
     const fetchFolders = async () => {
       try {
         console.log('[DEBUG] Fetching folders...');
-        const response = await fetch('http://localhost:3001/api/folders');
+        const response = await fetch(`${API_BASE}/api/folders`);
         const data = await response.json();
         console.log('[DEBUG] Folders response:', data);
         if (data.success) {
@@ -827,7 +832,7 @@ NIC Team
       console.log(`Calling Python script: ${selectedTemplate}`);
       setPythonProgress(10);
 
-      const response = await fetch('http://localhost:3001/api/generate-pdfs', {
+      const response = await fetch(`${API_BASE}/api/generate-pdfs`, {
         method: 'POST',
         body: formData
       });
@@ -861,7 +866,7 @@ NIC Team
   // Download PDF from server
   const downloadPDFFromServer = async (filename) => {
     try {
-      const response = await fetch(`http://localhost:3001/api/pdf/${filename}`);
+      const response = await fetch(`${API_BASE}/api/pdf/${filename}`);
       if (!response.ok) throw new Error('Failed to download PDF');
 
       const blob = await response.blob();
@@ -999,7 +1004,7 @@ NIC Team
     setError('');
 
     try {
-      const response = await fetch('http://localhost:3001/api/combine-pdfs', {
+      const response = await fetch(`${API_BASE}/api/combine-pdfs`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1020,7 +1025,7 @@ NIC Team
 
       // Download the combined PDF
       console.log('[DEBUG] Combined PDF result:', result);
-      const downloadResponse = await fetch(`http://localhost:3001/api/pdf/${result.filename}`);
+      const downloadResponse = await fetch(`${API_BASE}/api/pdf/${result.filename}`);
       if (downloadResponse.ok) {
         const blob = await downloadResponse.blob();
         const url = URL.createObjectURL(blob);
@@ -1125,13 +1130,24 @@ NIC Team
           // Function to sanitize filename consistently with Python
           const sanitizeFilename = (text) => {
             if (!text) return '';
-            return text
-              .normalize('NFD') // Decompose Unicode
-              .replace(/[\u0300-\u036f]/g, '') // Remove combining characters (accents)
-              .replace(/[^\w\s-]/g, '_') // Replace special characters with underscores (including /)
-              .replace(/\s+/g, '_') // Replace spaces with underscores
-              .replace(/_+/g, '_') // Remove multiple underscores
-              .replace(/^_|_$/g, ''); // Remove leading/trailing underscores
+            // Ensure text is a string
+            const textStr = String(text);
+            try {
+              return textStr
+                .normalize('NFD') // Decompose Unicode
+                .replace(/[\u0300-\u036f]/g, '') // Remove combining characters (accents)
+                .replace(/[^\w\s-]/g, '_') // Replace special characters with underscores (including /)
+                .replace(/\s+/g, '_') // Replace spaces with underscores
+                .replace(/_+/g, '_') // Remove multiple underscores
+                .replace(/^_|_$/g, ''); // Remove leading/trailing underscores
+            } catch (e) {
+              // Fallback for browsers that don't support normalize
+              return textStr
+                .replace(/[^\w\s-]/g, '_') // Replace special characters with underscores (including /)
+                .replace(/\s+/g, '_') // Replace spaces with underscores
+                .replace(/_+/g, '_') // Remove multiple underscores
+                .replace(/^_|_$/g, ''); // Remove leading/trailing underscores
+            }
           };
 
           // Prepare email data for Brevo
@@ -1154,7 +1170,7 @@ NIC Team
 
           console.log(`[DEBUG] Sending ${emailData.length} emails via Brevo`);
 
-          const emailResponse = await fetch('http://localhost:3001/api/send-emails-brevo', {
+          const emailResponse = await fetch(`${API_BASE}/api/send-emails-brevo`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -1201,7 +1217,9 @@ NIC Team
         } catch (emailError) {
           console.error('Brevo email processing failed:', emailError);
           setError(`Email sending failed: ${emailError.message}`);
-          setFailedCount(prev => prev + emailData.length);
+          // Use data.length as fallback if emailData is not defined
+          const emailCount = typeof emailData !== 'undefined' ? emailData.length : data.length;
+          setFailedCount(prev => prev + emailCount);
         }
 
       } else if (autoDownload) {
@@ -1571,7 +1589,7 @@ NIC Team
                     const fetchFolders = async () => {
                       try {
                         console.log('[DEBUG] Refreshing folders...');
-                        const response = await fetch('http://localhost:3001/api/folders');
+                        const response = await fetch(`${API_BASE}/api/folders`);
                         const data = await response.json();
                         console.log('[DEBUG] Folders response:', data);
                         if (data.success) {
