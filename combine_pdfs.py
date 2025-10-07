@@ -79,29 +79,57 @@ def combine_pdfs(pdf_files, output_path):
                     else:
                         reader = PdfReader(pdf_file)
                     
+                    # Validate PDF before processing
+                    try:
+                        if PYPDF2_VERSION == "new":
+                            page_count = len(reader.pages)
+                        else:
+                            page_count = reader.getNumPages()
+                        
+                        if page_count == 0:
+                            print(f"WARNING: {pdf_file} has no pages, skipping")
+                            continue
+                            
+                        print(f"Processing {page_count} pages from {os.path.basename(pdf_file)}")
+                        
+                    except Exception as validation_error:
+                        print(f"ERROR: Cannot read {pdf_file}: {str(validation_error)}")
+                        continue
+                    
                     # Add all pages from this PDF (should be unprotected)
                     if PYPDF2_VERSION == "new":
-                        # PyPDF2 v3+ syntax
-                        for page in reader.pages:
-                            writer.add_page(page)
-                        page_count = len(reader.pages)
+                        # PyPDF2 v3+ syntax - process pages individually for better error handling
+                        for page_idx, page in enumerate(reader.pages):
+                            try:
+                                writer.add_page(page)
+                            except Exception as page_error:
+                                print(f"ERROR: Failed to add page {page_idx + 1} from {pdf_file}: {str(page_error)}")
+                                continue
                     elif PYPDF2_VERSION == "old":
-                        # PyPDF2 v2 syntax
+                        # PyPDF2 v2 syntax - process pages individually
                         for page_num in range(reader.getNumPages()):
-                            page = reader.getPage(page_num)
-                            writer.addPage(page)
-                        page_count = reader.getNumPages()
+                            try:
+                                page = reader.getPage(page_num)
+                                writer.addPage(page)
+                            except Exception as page_error:
+                                print(f"ERROR: Failed to add page {page_num + 1} from {pdf_file}: {str(page_error)}")
+                                continue
                     else:
-                        # PyPDF2 v1.x syntax (very old)
+                        # PyPDF2 v1.x syntax (very old) - process pages individually
                         for page_num in range(reader.getNumPages()):
-                            page = reader.getPage(page_num)
-                            writer.addPage(page)
-                        page_count = reader.getNumPages()
+                            try:
+                                page = reader.getPage(page_num)
+                                writer.addPage(page)
+                            except Exception as page_error:
+                                print(f"ERROR: Failed to add page {page_num + 1} from {pdf_file}: {str(page_error)}")
+                                continue
                     
-                    print(f"Successfully added {page_count} pages")
+                    print(f"Successfully processed {page_count} pages from {os.path.basename(pdf_file)}")
                     
                 except Exception as file_error:
                     print(f"ERROR: Failed to process {pdf_file}: {str(file_error)}")
+                    import traceback
+                    traceback.print_exc()
                     continue
             else:
                 print(f"Warning: File not found: {pdf_file}")
@@ -124,11 +152,47 @@ def combine_pdfs(pdf_files, output_path):
             print("Output file is in current directory")
         
         print(f"Writing combined PDF to: {output_path}")
-        with open(output_path, 'wb') as output_file:
-            writer.write(output_file)
         
-        print(f"Successfully combined {len(unprotected_files)} PDFs into {output_path}")
-        return True
+        # Validate writer has pages before saving
+        try:
+            if PYPDF2_VERSION == "new":
+                total_pages = len(writer.pages)
+            else:
+                total_pages = writer.getNumPages() if hasattr(writer, 'getNumPages') else len(writer._pages)
+            
+            if total_pages == 0:
+                print("ERROR: No pages to write - all PDFs failed to process")
+                return False
+                
+            print(f"Writing {total_pages} total pages to combined PDF...")
+            
+        except Exception as validation_error:
+            print(f"WARNING: Could not validate page count: {str(validation_error)}")
+        
+        # Write with better error handling
+        try:
+            with open(output_path, 'wb') as output_file:
+                writer.write(output_file)
+            
+            # Verify the output file was created and has content
+            if os.path.exists(output_path):
+                file_size = os.path.getsize(output_path)
+                if file_size > 0:
+                    print(f"Successfully combined {len(unprotected_files)} PDFs into {output_path}")
+                    print(f"Output file size: {file_size:,} bytes")
+                    return True
+                else:
+                    print("ERROR: Output file is empty")
+                    return False
+            else:
+                print("ERROR: Output file was not created")
+                return False
+                
+        except Exception as write_error:
+            print(f"ERROR: Failed to write combined PDF: {str(write_error)}")
+            import traceback
+            traceback.print_exc()
+            return False
         
     except Exception as e:
         print(f"Error combining PDFs: {str(e)}", file=sys.stderr)
