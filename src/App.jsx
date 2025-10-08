@@ -1,10 +1,11 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Upload, FileText, Download, AlertCircle, CheckCircle, Loader, Mail, Settings } from 'lucide-react';
+import { Upload, FileText, Download, AlertCircle, CheckCircle, Loader, Mail, Settings, LogOut } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
 import emailjs from '@emailjs/browser';
 import sicomLogo from './nic2.jpeg'; // Ensure this file exists
+import AuthScreen from './components/AuthScreen';
 
 // Dynamic API URL - works both locally and on VPS
 const API_BASE = window.location.hostname === 'localhost' 
@@ -12,6 +13,12 @@ const API_BASE = window.location.hostname === 'localhost'
   : `http://${window.location.hostname}:3001`;
 
 const PDFGenerator = () => {
+  // Authentication state
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authToken, setAuthToken] = useState(null);
+  const [userEmail, setUserEmail] = useState('');
+
+  // Existing state
   const [file, setFile] = useState(null);
   const [data, setData] = useState([]);
   const [processing, setProcessing] = useState(false);
@@ -45,6 +52,36 @@ const PDFGenerator = () => {
   });
   const [showEmailConfig, setShowEmailConfig] = useState(false);
 
+  // Check for existing authentication on component mount
+  useEffect(() => {
+    const checkExistingAuth = () => {
+      const token = sessionStorage.getItem('authToken');
+      const email = sessionStorage.getItem('userEmail');
+      const authTime = sessionStorage.getItem('authTime');
+      
+      if (token && email && authTime) {
+        // Check if session is still valid (8 hours)
+        const sessionAge = Date.now() - parseInt(authTime);
+        const maxAge = 8 * 60 * 60 * 1000; // 8 hours
+        
+        if (sessionAge < maxAge) {
+          setAuthToken(token);
+          setUserEmail(email);
+          setIsAuthenticated(true);
+          console.log(`[AUTH] Restored session for ${email}`);
+        } else {
+          // Session expired, clear storage
+          sessionStorage.removeItem('authToken');
+          sessionStorage.removeItem('userEmail');
+          sessionStorage.removeItem('authTime');
+          console.log('[AUTH] Session expired, cleared storage');
+        }
+      }
+    };
+    
+    checkExistingAuth();
+  }, []);
+
   // Initialize EmailJS
   useEffect(() => {
     if (emailConfig.publicKey) {
@@ -52,13 +89,47 @@ const PDFGenerator = () => {
     }
   }, [emailConfig.publicKey]);
 
+  // Authentication functions
+  const handleAuthenticated = (token, email) => {
+    setAuthToken(token);
+    setUserEmail(email);
+    setIsAuthenticated(true);
+    console.log(`[AUTH] User authenticated: ${email}`);
+  };
+
+  const handleLogout = () => {
+    sessionStorage.removeItem('authToken');
+    sessionStorage.removeItem('userEmail');
+    sessionStorage.removeItem('authTime');
+    setAuthToken(null);
+    setUserEmail('');
+    setIsAuthenticated(false);
+    console.log('[AUTH] User logged out');
+  };
+
+  // Helper function to get auth headers
+  const getAuthHeaders = () => {
+    return authToken ? {
+      'Authorization': `Bearer ${authToken}`,
+      'Content-Type': 'application/json'
+    } : {
+      'Content-Type': 'application/json'
+    };
+  };
+
   // Fetch available templates and folders on component mount
   useEffect(() => {
+    if (!isAuthenticated || !authToken) {
+      return; // Don't fetch if not authenticated
+    }
+
     const fetchTemplates = async () => {
       console.log('[DEBUG] Starting template fetch, setting loading to true');
       setTemplatesLoading(true);
       try {
-        const response = await fetch(`${API_BASE}/api/templates`);
+        const response = await fetch(`${API_BASE}/api/templates`, {
+          headers: getAuthHeaders()
+        });
         const data = await response.json();
         console.log('[DEBUG] Server response for templates:', data);
         if (data.success) {
@@ -89,7 +160,9 @@ const PDFGenerator = () => {
     const fetchFolders = async () => {
       try {
         console.log('[DEBUG] Fetching folders...');
-        const response = await fetch(`${API_BASE}/api/folders`);
+        const response = await fetch(`${API_BASE}/api/folders`, {
+          headers: getAuthHeaders()
+        });
         const data = await response.json();
         console.log('[DEBUG] Folders response:', data);
         if (data.success) {
@@ -105,7 +178,7 @@ const PDFGenerator = () => {
 
     fetchTemplates();
     fetchFolders();
-  }, []);
+  }, [isAuthenticated, authToken]);
 
   // Function to get previous month name and year
   const getPreviousMonthFolder = () => {
@@ -836,6 +909,9 @@ NIC Team
       // Server is configured with 6-hour timeout to match Python script timeout
       const response = await fetch(`${API_BASE}/api/generate-pdfs`, {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        },
         body: formData
       });
 
@@ -868,7 +944,11 @@ NIC Team
   // Download PDF from server
   const downloadPDFFromServer = async (filename) => {
     try {
-      const response = await fetch(`${API_BASE}/api/pdf/${filename}`);
+      const response = await fetch(`${API_BASE}/api/pdf/${filename}`, {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
       if (!response.ok) throw new Error('Failed to download PDF');
 
       const blob = await response.blob();
@@ -1010,6 +1090,7 @@ NIC Team
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
         },
         body: JSON.stringify({
           folderName: selectedFolder,
@@ -1027,7 +1108,11 @@ NIC Team
 
       // Download the combined PDF
       console.log('[DEBUG] Combined PDF result:', result);
-      const downloadResponse = await fetch(`${API_BASE}/api/pdf/${result.filename}`);
+      const downloadResponse = await fetch(`${API_BASE}/api/pdf/${result.filename}`, {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
       if (downloadResponse.ok) {
         const blob = await downloadResponse.blob();
         const url = URL.createObjectURL(blob);
@@ -1176,6 +1261,7 @@ NIC Team
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              'Authorization': `Bearer ${authToken}`
             },
             body: JSON.stringify({
               emailData: emailData,
@@ -1305,8 +1391,35 @@ NIC Team
         background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
       }}>
 
-        {/* Mode Selector */}
-        <div className="bg-gradient-to-r from-purple-100 via-pink-100 to-indigo-100 rounded-xl shadow-lg border-2 border-purple-300 p-8 mb-8">
+        {/* Authentication Check */}
+        {!isAuthenticated ? (
+          <AuthScreen onAuthenticated={handleAuthenticated} />
+        ) : (
+          <>
+            {/* User Info Bar */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6 flex justify-between items-center">
+              <div className="flex items-center">
+                <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center mr-3">
+                  <span className="text-white font-bold text-sm">
+                    {userEmail.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-800">Welcome, {userEmail}</p>
+                  <p className="text-xs text-gray-500">NIC PDF Generator - Authenticated Session</p>
+                </div>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="flex items-center px-4 py-2 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors"
+              >
+                <LogOut size={16} className="mr-2" />
+                Logout
+              </button>
+            </div>
+
+            {/* Mode Selector */}
+            <div className="bg-gradient-to-r from-purple-100 via-pink-100 to-indigo-100 rounded-xl shadow-lg border-2 border-purple-300 p-8 mb-8">
           <h2 className="text-2xl font-bold mb-6 text-gray-800 text-center">Choose Your Operation</h2>
           <div className="grid grid-cols-2 gap-6">
             <button
@@ -1591,7 +1704,11 @@ NIC Team
                     const fetchFolders = async () => {
                       try {
                         console.log('[DEBUG] Refreshing folders...');
-                        const response = await fetch(`${API_BASE}/api/folders`);
+                        const response = await fetch(`${API_BASE}/api/folders`, {
+                          headers: {
+                            'Authorization': `Bearer ${authToken}`
+                          }
+                        });
                         const data = await response.json();
                         console.log('[DEBUG] Folders response:', data);
                         if (data.success) {
@@ -1839,16 +1956,11 @@ NIC Team
             </div>
           </div>
         )}
+          </>
+        )}
       </div>
     </div>
-
-
-  )
-  {
-  }
-
-
-
+  );
 };
 
 export default PDFGenerator;

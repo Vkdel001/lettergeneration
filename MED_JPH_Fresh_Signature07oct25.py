@@ -248,6 +248,9 @@ for index, row in df.iterrows():
     owner1_title = row.get('Owner 1 Title', '')
     owner1_first_name = row.get('Owner 1 First Name', '')
     owner1_surname = row.get('Owner 1 Surname', '')
+    owner2_title = row.get('Owner 2 Title', '')
+    owner2_first_name = row.get('Owner 2 First Name', '')
+    owner2_surname = row.get('Owner 2 Surname', '')
     assignee_surname = row.get('Assignee Surname Corrected', '')
     owner1_address1 = row.get('Owner 1 Policy Address 1', '')
     owner1_address2 = row.get('Owner 1 Policy Address 2', '')
@@ -422,20 +425,28 @@ for index, row in df.iterrows():
     c.drawString(margin, y_pos, current_date)
     y_pos -= 25
 
-    # Add recipient address block (CAPS and BOLD)
+    # Add recipient address block
     address_lines = []
-    address_lines.append(f"{owner1_title} {owner1_first_name} {owner1_surname}".upper())
-    if pd.notna(owner1_address1) and str(owner1_address1).strip():
-        address_lines.append(str(owner1_address1).upper())
-    if pd.notna(owner1_address2) and str(owner1_address2).strip():
-        address_lines.append(str(owner1_address2).upper())
-    if pd.notna(owner1_address3) and str(owner1_address3).strip():
-        address_lines.append(str(owner1_address3).upper())
-    if pd.notna(owner1_address4) and str(owner1_address4).strip():
-        address_lines.append(str(owner1_address4).upper())
+    address_lines.append(f"{owner1_title} {owner1_first_name} {owner1_surname}")
     
-    # Use bold font for name and address
-    c.setFont("Cambria-Bold", 10)
+    # Add Owner 2 information if available
+    if (pd.notna(owner2_title) and str(owner2_title).strip()) or \
+       (pd.notna(owner2_first_name) and str(owner2_first_name).strip()) or \
+       (pd.notna(owner2_surname) and str(owner2_surname).strip()):
+        owner2_line = f"{owner2_title} {owner2_first_name} {owner2_surname}".strip()
+        if owner2_line:
+            address_lines.append(owner2_line)
+    
+    if pd.notna(owner1_address1) and str(owner1_address1).strip():
+        address_lines.append(str(owner1_address1))
+    if pd.notna(owner1_address2) and str(owner1_address2).strip():
+        address_lines.append(str(owner1_address2))
+    if pd.notna(owner1_address3) and str(owner1_address3).strip():
+        address_lines.append(str(owner1_address3))
+    if pd.notna(owner1_address4) and str(owner1_address4).strip():
+        address_lines.append(str(owner1_address4))
+    
+    c.setFont("Cambria", 10)
     for line in address_lines:
         c.drawString(margin, y_pos, line)
         y_pos -= 14
@@ -460,22 +471,22 @@ for index, row in df.iterrows():
     y_pos -= 20
 
     # Add salutation
-    salutation_text = f"Dear {owner1_title} {owner1_surname},"
+    salutation_text = f"Dear Valued Customers,"
     c.setFont("Cambria", 10)
     c.drawString(margin, y_pos, salutation_text)
     y_pos -= 16
 
     # Add policy details table
     table_data = [
-        ["POLICY NO.", ":", f"{policy_no}"],
-        ["PREMIUM", ":", f"MUR {gross_premium:,.2f}"],
-        ["PAYMENT FREQUENCY", ":", f"{frequency}"]
+        ["POLICY NO.", "", f"{policy_no}"],
+        ["PREMIUM", "", f"MUR {gross_premium:,.2f}"],
+        ["PAYMENT FREQUENCY", "", f"{frequency}"]
     ]
     
     # Draw table with lines
     table_start_y = y_pos
     row_height = 16
-    col_widths = [120, 10, 200]  # Reduced colon column width for tighter spacing
+    col_widths = [120, 20, 200]  # Adjust column widths
     
     for i, row in enumerate(table_data):
         current_y = table_start_y - (i * row_height)
@@ -491,16 +502,12 @@ for index, row in df.iterrows():
             c.drawString(x_pos, current_y, cell)
             x_pos += col_widths[j]
         
-        # Add underline below PAYMENT FREQUENCY row (last row)
-        if i == len(table_data) - 1:  # Last row (PAYMENT FREQUENCY)
-            underline_y = current_y - 3
-            # Draw line from left margin to match paragraph width (width - 2 * margin)
-            c.line(margin, underline_y, width - margin, underline_y)
+        # Lines removed for cleaner look
     
     y_pos = table_start_y - (len(table_data) * row_height) - 10
 
     # Add main body text
-    body_text1 = f"You are hereby notified that the premiums due by you under the above Policy as on <font name='Cambria-Bold'>{arrears_date_formatted}</font> amount to MUR <font name='Cambria-Bold'>{amount:,.2f}</font>."
+    body_text1 = f"You are hereby notified that the premiums due by you under the above Policy as on {arrears_date_formatted} amounts to MUR {amount:,.2f}."
     para1 = Paragraph(body_text1, styles['BodyText'])
     para1.wrapOn(c, width - 2 * margin, height)
     para1.drawOn(c, margin, y_pos - para1.height)
@@ -512,7 +519,7 @@ for index, row in df.iterrows():
     para2.drawOn(c, margin, y_pos - para2.height)
     y_pos -= para2.height + 12
 
-    body_text3 = "You are hereby further notified that, as provided by law and as set out in your contract, should you not pay the <font name='Cambria-Bold'>total</font> premium amount due within 20 days of the date of receipt of the present Mise en Demeure, the Policy cover shall be suspended as from the 21st day until noon the day on which you pay the <font name='Cambria-Bold'>total</font> premiums in arrears."
+    body_text3 = "You are hereby further notified that, as provided by law and as set out in your contract, should you not pay the <font name='Cambria-Bold'>total</font> premium amount due within <font name='Cambria-Bold'>20 days</font> of the date of receipt of the present Mise en Demeure, the Policy cover shall be suspended as from the 21st day until noon the day on which you pay the total premiums in arrears."
     para3 = Paragraph(body_text3, styles['BodyText'])
     para3.wrapOn(c, width - 2 * margin, height)
     para3.drawOn(c, margin, y_pos - para3.height)
@@ -534,17 +541,17 @@ for index, row in df.iterrows():
     if os.path.exists(qr_filename):
         page_center_x = width / 2
         
-        # Add maucas logo (same size as QR code for visual balance)
+        # Add maucas logo (bigger size using available space)
         if os.path.exists("maucas2.jpeg"):
             img = ImageReader("maucas2.jpeg")
-            img_width = 100  # Match QR code size for visual balance
+            img_width = 85  # Increased from 70 to 85 for better visibility
             img_height = img_width * (img.getSize()[1] / img.getSize()[0])
             logo_x = page_center_x - (img_width / 2)
             c.drawImage(img, logo_x, y_pos - img_height, width=img_width, height=img_height)
             y_pos -= img_height + 2
         elif os.path.exists("maucas.jpeg"):
             img = ImageReader("maucas.jpeg")
-            img_width = 100  # Match QR code size for visual balance
+            img_width = 85  # Increased from 70 to 85 for better visibility
             img_height = img_width * (img.getSize()[1] / img.getSize()[0])
             logo_x = page_center_x - (img_width / 2)
             c.drawImage(img, logo_x, y_pos - img_height, width=img_width, height=img_height)
@@ -578,7 +585,7 @@ for index, row in df.iterrows():
     para_footer1.drawOn(c, margin, y_pos - para_footer1.height)
     y_pos -= para_footer1.height + 12
 
-    footer_text2 = "Should you require any additional information, please do not hesitate to email us on <font name='Cambria' size='11'><u>nicarlife@nicl.mu</u></font> or call our Recovery Department on 602-3315."
+    footer_text2 = "Should you require any additional information, please do not hesitate to email us on nicarlife@nicl.mu or call our Recovery Department on 602-3315."
     para_footer2 = Paragraph(footer_text2, styles['BodyText'])
     para_footer2.wrapOn(c, width - 2 * margin, height)
     para_footer2.drawOn(c, margin, y_pos - para_footer2.height)
@@ -590,15 +597,44 @@ for index, row in df.iterrows():
         c.drawString(margin, y_pos, f"{assignee_surname}")
         y_pos -= 20
 
-    # Add computer generated disclaimer with 3 line space below
-    y_pos -= 20  # Add some space after assignee surname
-    disclaimer_text = "This is a computer generated letter and does not require authentication."
-    disclaimer_para = Paragraph(disclaimer_text, styles['disclaimerText'])
-    disclaimer_para.wrapOn(c, width - 2 * margin, height)
-    disclaimer_para.drawOn(c, margin, y_pos - disclaimer_para.height)
+    # Add signature image and "Authorized Signatory" text
+    # Add some space before signature
+    y_pos -= 10
     
-    # Ensure 3 lines of space below disclaimer (approximately 42 points = 3 lines at 14pt spacing)
-    y_pos -= disclaimer_para.height + 42
+    # Add signature image (if exists)
+    if os.path.exists("signature.png"):
+        signature_img = ImageReader("signature.png")
+        signature_width = 80  # Reduced size to avoid overlap
+        signature_height = signature_width * (signature_img.getSize()[1] / signature_img.getSize()[0])
+        signature_x = margin
+        c.drawImage(signature_img, signature_x, y_pos - signature_height, width=signature_width, height=signature_height)
+        
+        # Add "Authorized Signatory" text below the signature
+        signature_info_y = y_pos - signature_height - 15
+        x_pos = margin
+        
+        # Name section
+        c.setFont("Cambria-Bold", 10)
+        c.drawString(x_pos, signature_info_y, "Name:")
+        x_pos += c.stringWidth("Name:", "Cambria-Bold", 10) + 2
+        c.setFont("Cambria", 10)
+        c.drawString(x_pos, signature_info_y, " Sample Name")
+        x_pos += c.stringWidth(" Sample Name", "Cambria", 10) + 15
+        
+        # Title section
+        c.setFont("Cambria-Bold", 10)
+        c.drawString(x_pos, signature_info_y, "Title:")
+        x_pos += c.stringWidth("Title:", "Cambria-Bold", 10) + 2
+        c.setFont("Cambria", 10)
+        c.drawString(x_pos, signature_info_y, " Head of Recovery")
+        x_pos += c.stringWidth(" Head of Recovery", "Cambria", 10) + 15
+        
+        # Contact Number section
+        c.setFont("Cambria-Bold", 10)
+        c.drawString(x_pos, signature_info_y, "Contact Number:")
+        x_pos += c.stringWidth("Contact Number:", "Cambria-Bold", 10) + 2
+        c.setFont("Cambria", 10)
+        c.drawString(x_pos, signature_info_y, " +230 602-3000")
 
     # Save the unprotected PDF
     c.save()

@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import cors from 'cors';
 import { fileURLToPath } from 'url';
+import AuthService from './auth_service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,7 +43,7 @@ if (!fs.existsSync(outputDir)) {
 }
 
 // API endpoint to generate PDFs using Python
-app.post('/api/generate-pdfs', upload.single('excelFile'), (req, res) => {
+app.post('/api/generate-pdfs', AuthService.authMiddleware, upload.single('excelFile'), (req, res) => {
   // Set timeout to 6 hours (21600000 ms) to match Python script timeout
   req.setTimeout(21600000); // 6 hours in milliseconds
   res.setTimeout(21600000); // 6 hours in milliseconds
@@ -233,7 +234,7 @@ app.post('/api/generate-pdfs', upload.single('excelFile'), (req, res) => {
 });
 
 // API endpoint to get PDF file
-app.get('/api/pdf/:filename', (req, res) => {
+app.get('/api/pdf/:filename', AuthService.authMiddleware, (req, res) => {
   const filename = req.params.filename;
   
   // Search for the file in multiple possible locations
@@ -285,7 +286,7 @@ app.get('/api/pdf/:filename', (req, res) => {
 });
 
 // API endpoint to get available templates
-app.get('/api/templates', (req, res) => {
+app.get('/api/templates', AuthService.authMiddleware, (req, res) => {
   try {
     const templateFiles = fs.readdirSync('.')
       .filter(file => file.endsWith('.py') && !file.includes('wrapper') && !file.includes('test'))
@@ -308,7 +309,7 @@ app.get('/api/templates', (req, res) => {
 });
 
 // API endpoint to get available PDF folders
-app.get('/api/folders', (req, res) => {
+app.get('/api/folders', AuthService.authMiddleware, (req, res) => {
   try {
     console.log('[DEBUG] Scanning for PDF folders...');
     const allItems = fs.readdirSync('.');
@@ -374,7 +375,7 @@ app.get('/api/folders', (req, res) => {
 });
 
 // API endpoint to send emails via Brevo
-app.post('/api/send-emails-brevo', (req, res) => {
+app.post('/api/send-emails-brevo', AuthService.authMiddleware, (req, res) => {
   // Set timeout for email sending (1 hour should be sufficient for large batches)
   req.setTimeout(3600000); // 1 hour in milliseconds
   res.setTimeout(3600000); // 1 hour in milliseconds
@@ -486,7 +487,7 @@ app.post('/api/send-emails-brevo', (req, res) => {
 });
 
 // API endpoint to combine PDFs
-app.post('/api/combine-pdfs', (req, res) => {
+app.post('/api/combine-pdfs', AuthService.authMiddleware, (req, res) => {
   // Set timeout for PDF combining (30 minutes should be sufficient)
   req.setTimeout(1800000); // 30 minutes in milliseconds
   res.setTimeout(1800000); // 30 minutes in milliseconds
@@ -654,6 +655,94 @@ app.post('/api/combine-pdfs', (req, res) => {
 
 // Serve static files from dist directory (for production)
 app.use(express.static(path.join(__dirname, 'dist')));
+
+// Authentication endpoints
+app.post('/api/auth/send-otp', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+
+    const result = await AuthService.sendOTP(email);
+    res.json(result);
+    
+  } catch (error) {
+    console.error('[AUTH] Error in send-otp endpoint:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+app.post('/api/auth/verify-otp', (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    
+    if (!email || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and OTP are required'
+      });
+    }
+
+    const result = AuthService.verifyOTP(email, otp);
+    res.json(result);
+    
+  } catch (error) {
+    console.error('[AUTH] Error in verify-otp endpoint:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+app.post('/api/auth/password-login', (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required'
+      });
+    }
+
+    const result = AuthService.passwordAuth(email, password);
+    res.json(result);
+    
+  } catch (error) {
+    console.error('[AUTH] Error in password-login endpoint:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// Get active sessions (admin endpoint)
+app.get('/api/auth/sessions', AuthService.authMiddleware, (req, res) => {
+  try {
+    const sessions = AuthService.getActiveSessions();
+    res.json({
+      success: true,
+      sessions,
+      count: sessions.length
+    });
+  } catch (error) {
+    console.error('[AUTH] Error in sessions endpoint:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
 
 // API endpoint to check server status
 app.get('/api/status', (req, res) => {

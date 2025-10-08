@@ -1,5 +1,13 @@
 # PDF Generator VPS Deployment Guide
-Complete step-by-step guide to deploy your PDF Generator app on DigitalOcean VPS alongside existing Streamlit app.
+Complete step-by-step guide to deploy your PDF Generator app on DigitalOcean VPS with all critical fixes and improvements applied.
+
+## 🚨 Critical Updates (October 2025)
+This guide includes essential fixes for:
+- **QR Code Corruption Prevention** - PyMuPDF integration
+- **Python Compatibility** - Fixed `python` vs `python3` issues  
+- **Environment-Aware API URLs** - Automatic local/VPS detection
+- **Password Protection** - PyPDF2 version compatibility
+- **JavaScript Error Fixes** - Resolved frontend issues
 
 ## 📋 Pre-Deployment Checklist
 
@@ -57,10 +65,21 @@ python3 --version
 
 # Install pip if not available
 sudo apt-get update
-sudo apt-get install -y python3-pip python3-dev
+sudo apt-get install -y python3-pip python3-dev python3-full
 
-# Install required Python packages
-pip3 install pandas openpyxl reportlab segno requests python-dotenv PyPDF2
+# 🔧 CRITICAL FIX: Create python symlink for compatibility
+sudo ln -sf /usr/bin/python3 /usr/bin/python
+python --version  # Should show Python 3.x
+
+# Install required Python packages (with system override for newer Ubuntu)
+pip3 install pandas openpyxl reportlab segno requests python-dotenv PyPDF2 --break-system-packages
+
+# 🚨 CRITICAL: Install PyMuPDF for QR code preservation
+pip3 install PyMuPDF --break-system-packages
+
+# Verify critical packages
+python3 -c "import fitz; print('✅ PyMuPDF installed - QR codes will be preserved')"
+python3 -c "from PyPDF2 import PdfReader; print('✅ PyPDF2 compatible')"
 ```
 
 ### Step 4: Create Directory Structure
@@ -122,7 +141,12 @@ chmod 644 fonts/*.ttf
 
 ### Step 7: Build the Application
 ```bash
-# Build the frontend
+# 🔧 IMPORTANT: The frontend now has environment-aware API URLs
+# It automatically detects if running locally or on VPS
+# Local: uses http://localhost:3001
+# VPS: uses http://your-vps-ip:3001
+
+# Build the frontend with environment detection
 npm run build
 
 # Test if the server starts
@@ -130,6 +154,10 @@ npm run server &
 sleep 5
 curl http://localhost:3001/api/status
 kill %1  # Stop the test server
+
+# 🧪 Test Python scripts work correctly
+python3 JPH_Fresh.py --help
+python3 combine_pdfs.py --help
 ```
 
 ### Step 8: Install Process Manager (PM2)
@@ -333,7 +361,84 @@ After deployment, your apps will be accessible at:
 
 ## 🚨 Troubleshooting
 
-### Common Issues:
+### Critical Issues and Fixes:
+
+#### 1. 🔴 Connection Refused Errors
+```bash
+# Check if services are running
+pm2 status
+
+# Check API URL configuration (frontend should auto-detect)
+curl -I http://localhost:3001/api/status
+
+# Restart services
+pm2 restart all
+
+# Check logs for errors
+pm2 logs pdf-generator --lines 20
+```
+
+#### 2. 🔴 Python Script Failures
+```bash
+# Verify Python symlink (CRITICAL FIX)
+python --version  # Should show Python 3.x
+which python      # Should point to /usr/bin/python
+
+# If symlink is broken, recreate it
+sudo rm /usr/bin/python 2>/dev/null
+sudo ln -sf /usr/bin/python3 /usr/bin/python
+
+# Test Python scripts
+python3 JPH_Fresh.py --help
+python3 combine_pdfs.py --help
+```
+
+#### 3. 🔴 QR Code Corruption in Combined PDFs
+```bash
+# Check if PyMuPDF is installed (CRITICAL for QR preservation)
+python3 -c "import fitz; print('PyMuPDF available')" || echo "❌ PyMuPDF missing!"
+
+# Install PyMuPDF if missing
+pip3 install PyMuPDF --break-system-packages
+
+# Test PDF combining with QR preservation
+python3 combine_pdfs.py --files '["file1.pdf", "file2.pdf"]' --output test.pdf
+```
+
+#### 4. 🔴 Password Protection Not Working
+```bash
+# Check PyPDF2 compatibility
+python3 -c "from PyPDF2 import PdfReader, PdfWriter; print('PyPDF2 v3+ compatible')" || \
+python3 -c "from PyPDF2 import PdfFileReader; print('PyPDF2 v2 compatible')"
+
+# Test password protection
+python3 JPH_Fresh.py --output test_password_output
+# Check if protected folder has password-protected PDFs
+```
+
+#### 5. 🔴 Frontend JavaScript Errors
+```bash
+# Check browser console for errors like:
+# - "text.normalize is not a function"
+# - "emailData is not defined"
+
+# These are fixed in the latest code - ensure you have the latest build
+git pull
+npm run build
+pm2 restart pdf-frontend
+```
+
+#### 6. 🔴 Environment Detection Issues
+```bash
+# The frontend should automatically detect environment
+# Check browser network tab - API calls should go to correct URL:
+# Local: http://localhost:3001/api/*
+# VPS: http://your-vps-ip:3001/api/*
+
+# If wrong URLs, clear browser cache and hard refresh (Ctrl+F5)
+```
+
+### Standard Issues:
 
 #### Port Already in Use:
 ```bash
@@ -367,6 +472,28 @@ sudo mkswap /swapfile
 sudo swapon /swapfile
 ```
 
+### 🔍 Diagnostic Commands:
+```bash
+# Complete system check
+echo "=== Python Environment ==="
+python --version
+python3 --version
+which python
+
+echo "=== Critical Packages ==="
+python3 -c "import fitz; print('✅ PyMuPDF')" 2>/dev/null || echo "❌ PyMuPDF missing"
+python3 -c "from PyPDF2 import PdfReader; print('✅ PyPDF2')" 2>/dev/null || echo "❌ PyPDF2 missing"
+
+echo "=== Services Status ==="
+pm2 status
+
+echo "=== Network Status ==="
+sudo netstat -tlnp | grep -E ':(3001|8080|8501)'
+
+echo "=== API Health ==="
+curl -I http://localhost:3001/api/status 2>/dev/null || echo "❌ API not responding"
+```
+
 ## 📊 Monitoring Setup
 
 ### Create monitoring script:
@@ -395,6 +522,7 @@ chmod +x /var/www/monitor.sh
 
 ## ✅ Deployment Checklist
 
+### Basic Setup:
 - [ ] SSH access to VPS
 - [ ] System resources checked
 - [ ] Node.js installed
@@ -402,6 +530,15 @@ chmod +x /var/www/monitor.sh
 - [ ] Repository cloned
 - [ ] Environment variables configured
 - [ ] Font files uploaded
+
+### Critical Fixes Applied:
+- [ ] **Python symlink created** (`python` → `python3`)
+- [ ] **PyMuPDF installed** (QR code preservation)
+- [ ] **PyPDF2 compatibility verified** (password protection)
+- [ ] **Environment-aware frontend built** (auto API detection)
+- [ ] **JavaScript errors fixed** (normalize, emailData issues)
+
+### Deployment Complete:
 - [ ] Application built successfully
 - [ ] PM2 configured and running
 - [ ] Firewall configured
@@ -409,10 +546,42 @@ chmod +x /var/www/monitor.sh
 - [ ] Nginx configured (optional)
 - [ ] Monitoring setup
 
+### Final Verification:
+- [ ] **PDF generation works** (test with sample Excel file)
+- [ ] **QR codes preserved** in combined PDFs
+- [ ] **Password protection works** (check protected folder)
+- [ ] **Email integration works** (Brevo emails sent)
+- [ ] **No JavaScript errors** in browser console
+
 ## 🎉 Success!
 
 Once all steps are completed, you'll have both applications running on your VPS:
 - Your existing Streamlit cashback app
-- Your new PDF Generator app
+- Your new PDF Generator app with all critical fixes
 
 Both will be managed by PM2 and automatically restart if they crash or if the server reboots.
+
+## 🔧 Critical Fixes Summary
+
+### What We Fixed:
+1. **QR Code Corruption** - Switched to PyMuPDF for better image preservation
+2. **Python Compatibility** - Fixed `python` vs `python3` command issues
+3. **Environment Detection** - Frontend automatically detects local vs VPS
+4. **Password Protection** - Added PyPDF2 version compatibility
+5. **JavaScript Errors** - Fixed `normalize` and `emailData` scope issues
+6. **Error Handling** - Added robust error checking and logging
+
+### Why These Fixes Matter:
+- **Prevents customer letter disasters** (QR codes missing)
+- **Ensures cross-environment compatibility** (local dev + VPS production)
+- **Improves reliability** (better error handling)
+- **Maintains security** (password protection works)
+
+### Version Information:
+- **Last Updated:** October 2025
+- **Critical Fixes Applied:** QR preservation, Python compatibility, environment detection
+- **Dependencies:** PyMuPDF (recommended), PyPDF2 (fallback), PM2, Node.js 18+
+
+---
+
+**⚠️ IMPORTANT:** Always test PDF generation and combining after deployment to ensure QR codes are preserved correctly. This prevents critical issues that could affect customer communications.

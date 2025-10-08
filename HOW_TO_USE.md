@@ -3,6 +3,12 @@
 ## Overview
 This application generates personalized PDF arrears letters for insurance policyholders. It combines a React frontend with a Node.js backend that executes Python scripts to create professional PDF documents.
 
+### 🚨 Latest Updates (October 2025)
+- **QR Code Preservation:** Fixed corruption issues in PDF combining using PyMuPDF
+- **Environment Detection:** Automatic API URL detection for local/VPS deployment
+- **Password Protection:** Enhanced PyPDF2 compatibility for all versions
+- **Error Handling:** Improved JavaScript error handling and user feedback
+
 ## Prerequisites
 
 ### Required Software
@@ -13,7 +19,21 @@ This application generates personalized PDF arrears letters for insurance policy
 ### Required Python Libraries
 Install these Python packages:
 ```bash
-pip install pandas requests segno reportlab openpyxl
+# Standard packages
+pip install pandas requests segno reportlab openpyxl PyPDF2
+
+# 🚨 CRITICAL: Install PyMuPDF for QR code preservation in PDF combining
+pip install PyMuPDF
+
+# For VPS deployment (if system-managed Python environment)
+pip install PyMuPDF --break-system-packages
+```
+
+### 🔧 VPS-Specific Requirements
+```bash
+# Create Python compatibility symlink (critical for VPS)
+sudo ln -sf /usr/bin/python3 /usr/bin/python
+python --version  # Should show Python 3.x
 ```
 
 ### Required Files
@@ -143,6 +163,33 @@ To send PDFs via email, configure EmailJS:
 
 ## Troubleshooting
 
+### 🚨 Critical Issues (Fixed in Latest Version)
+
+**QR Codes Missing in Combined PDFs**
+- ✅ **FIXED**: Now uses PyMuPDF for better image preservation
+- Ensure PyMuPDF is installed: `pip install PyMuPDF`
+- Test: Generate and combine PDFs, verify QR codes are intact
+
+**"Failed to start Python process" (VPS)**
+- ✅ **FIXED**: Python compatibility symlink created
+- Check: `python --version` should show Python 3.x
+- Fix: `sudo ln -sf /usr/bin/python3 /usr/bin/python`
+
+**"Connection Refused" Errors (VPS)**
+- ✅ **FIXED**: Environment-aware API URLs
+- Frontend automatically detects local vs VPS environment
+- No manual URL changes needed
+
+**JavaScript Errors (normalize, emailData)**
+- ✅ **FIXED**: Added compatibility fallbacks
+- Clear browser cache and hard refresh (Ctrl+F5)
+- Check browser console for remaining errors
+
+**Password Protection Not Working**
+- ✅ **FIXED**: PyPDF2 version compatibility added
+- Works with both old and new PyPDF2 versions
+- Test: Check if protected folder has password-protected PDFs
+
 ### Common Issues
 
 **"Excel file validation failed"**
@@ -154,6 +201,7 @@ To send PDFs via email, configure EmailJS:
 - Check Python libraries are installed
 - Verify font files exist in `fonts/` folder
 - Ensure `maucas.jpeg` logo file exists
+- **NEW**: Check Python symlink: `which python`
 
 **"EBUSY: resource busy or locked"**
 - Close any open PDF files
@@ -164,6 +212,33 @@ To send PDFs via email, configure EmailJS:
 - Ensure backend server is running on port 3001
 - Check for firewall/antivirus blocking
 - Verify CORS settings
+- **NEW**: Check if API URLs are correct in browser network tab
+
+### 🔍 Diagnostic Commands
+
+**Check Python Environment:**
+```bash
+python --version          # Should show Python 3.x
+which python             # Should point to /usr/bin/python
+python3 -c "import fitz; print('PyMuPDF OK')"  # Should not error
+```
+
+**Test PDF Generation:**
+```bash
+python3 JPH_Fresh.py --help                    # Should show help
+python3 combine_pdfs.py --help                 # Should show help
+```
+
+**Check Services:**
+```bash
+# Local development
+curl -I http://localhost:3001/api/status       # Should return 200 OK
+curl -I http://localhost:5173                  # Should return 200 OK
+
+# VPS deployment
+curl -I http://your-vps-ip:3001/api/status     # Should return 200 OK
+curl -I http://your-vps-ip:8080                # Should return 200 OK
+```
 
 ### File Locations
 - **Generated PDFs**: `generated_pdfs/` folder
@@ -211,5 +286,25 @@ project/
 
 ---
 
-**Last Updated**: September 2025
-**Version**: 1.0
+## 🔧 Version History
+
+### Version 1.1 (October 2025) - Critical Fixes
+- **QR Code Preservation**: Fixed corruption in PDF combining using PyMuPDF
+- **Python Compatibility**: Fixed `python` vs `python3` command issues
+- **Environment Detection**: Automatic API URL detection for local/VPS
+- **Password Protection**: Enhanced PyPDF2 compatibility for all versions
+- **Error Handling**: Improved JavaScript error handling and user feedback
+- **Memory Management**: Better handling of large PDF files
+
+### Version 1.0 (September 2025) - Initial Release
+- Basic PDF generation functionality
+- Excel file processing
+- Email integration
+- Multiple template support
+
+---
+
+**Last Updated**: October 2025
+**Version**: 1.1 (Critical Fixes Applied)
+
+**⚠️ IMPORTANT**: If upgrading from v1.0, ensure PyMuPDF is installed and Python symlink is created to prevent QR code corruption and compatibility issues.

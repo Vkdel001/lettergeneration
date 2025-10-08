@@ -1,0 +1,26 @@
+// Add this to server.js after line 47 (after res.setTimeout)
+// This will help us see exactly when and why timeouts occur
+
+// Add timeout event listeners for debugging
+req.on('timeout', () => {
+  console.error(`[TIMEOUT] Request timeout occurred at ${new Date().toISOString()}`);
+  console.error(`[TIMEOUT] Request URL: ${req.url}`);
+  console.error(`[TIMEOUT] Request method: ${req.method}`);
+  console.error(`[TIMEOUT] Request has been running for more than 6 hours`);
+});
+
+res.on('timeout', () => {
+  console.error(`[TIMEOUT] Response timeout occurred at ${new Date().toISOString()}`);
+  console.error(`[TIMEOUT] Response for URL: ${req.url}`);
+});
+
+// Add connection close logging
+req.on('close', () => {
+  console.log(`[CONNECTION] Request connection closed at ${new Date().toISOString()}`);
+  console.log(`[CONNECTION] URL: ${req.url}`);
+});
+
+req.on('aborted', () => {
+  console.error(`[ABORTED] Request was aborted at ${new Date().toISOString()}`);
+  console.error(`[ABORTED] URL: ${req.url}`);
+});

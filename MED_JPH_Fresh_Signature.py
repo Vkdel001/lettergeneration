@@ -301,8 +301,13 @@ for index, row in df.iterrows():
     print(f"[NIC] Record {index + 1}: NIC = '{nic}' (type: {type(nic)})")
     
     # Create full_name variable (first letter of first name + surname, max 24 chars)
-    first_initial = owner1_first_name[0].upper() if owner1_first_name and len(owner1_first_name) > 0 else ''
-    surname_part = owner1_surname.strip() if owner1_surname else ''
+    first_initial = ''
+    if owner1_first_name and isinstance(owner1_first_name, str) and len(owner1_first_name) > 0 and owner1_first_name.lower() != 'nan':
+        first_initial = owner1_first_name[0].upper()
+    # Handle surname safely (check for NaN and non-string values)
+    surname_part = ''
+    if owner1_surname and isinstance(owner1_surname, str) and owner1_surname.lower() != 'nan':
+        surname_part = owner1_surname.strip()
     
     # Combine and ensure max 24 characters
     if first_initial and surname_part:
