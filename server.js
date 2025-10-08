@@ -47,40 +47,40 @@ app.post('/api/generate-pdfs', upload.single('excelFile'), (req, res) => {
   // Set timeout to 6 hours (21600000 ms) to match Python script timeout
   req.setTimeout(21600000); // 6 hours in milliseconds
   res.setTimeout(21600000); // 6 hours in milliseconds
-  
+
   const { template, outputFolder: customOutputFolder } = req.body;
   const inputFile = req.file.path;
-  
+
   console.log(`[DEBUG] Received template: ${template}`);
   console.log(`[DEBUG] Received outputFolder: ${customOutputFolder}`);
   console.log(`[DEBUG] Input file path: ${inputFile}`);
-  
+
   // Use custom output folder if provided, otherwise use default
-  const outputFolder = customOutputFolder 
+  const outputFolder = customOutputFolder
     ? path.resolve('.', customOutputFolder)
     : path.resolve(outputDir);
-  
+
   // Create a backup copy in root directory for fallback with validation
   const fallbackFile = path.resolve('.', 'Generic_Template.xlsx');
   try {
     fs.copyFileSync(inputFile, fallbackFile);
-    
+
     // Verify the file was copied correctly
     const inputStats = fs.statSync(inputFile);
     const fallbackStats = fs.statSync(fallbackFile);
-    
+
     if (inputStats.size !== fallbackStats.size) {
       throw new Error(`File size mismatch: input=${inputStats.size}, fallback=${fallbackStats.size}`);
     }
-    
+
     console.log(`[DEBUG] Created fallback file: ${fallbackFile} (${fallbackStats.size} bytes)`);
-    
+
     // Also create a timestamped backup for debugging
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const debugFile = path.resolve('.', `Generic_Template_debug_${timestamp}.xlsx`);
     fs.copyFileSync(fallbackFile, debugFile);
     console.log(`[DEBUG] Created debug file: ${debugFile}`);
-    
+
   } catch (error) {
     console.error(`[ERROR] Could not create fallback file: ${error.message}`);
     // This is critical - if we can't create the fallback, the process will likely fail
@@ -90,7 +90,7 @@ app.post('/api/generate-pdfs', upload.single('excelFile'), (req, res) => {
       error: error.message
     });
   }
-  
+
   console.log(`Starting PDF generation with template: ${template}`);
   console.log(`Input file: ${inputFile}`);
   console.log(`Output folder: ${outputFolder}`);
@@ -101,7 +101,7 @@ app.post('/api/generate-pdfs', upload.single('excelFile'), (req, res) => {
       try {
         const filePath = path.join(outputFolder, file);
         const stat = fs.statSync(filePath);
-        
+
         if (stat.isDirectory()) {
           // Remove directory recursively
           fs.rmSync(filePath, { recursive: true, force: true });
@@ -132,9 +132,9 @@ app.post('/api/generate-pdfs', upload.single('excelFile'), (req, res) => {
     '--input', inputFile,
     '--output', outputFolder
   ];
-  
+
   console.log(`[DEBUG] Python command: python ${pythonArgs.join(' ')}`);
-  
+
   const python = spawn('python', pythonArgs, {
     encoding: 'utf8',
     env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
@@ -155,14 +155,14 @@ app.post('/api/generate-pdfs', upload.single('excelFile'), (req, res) => {
 
   python.on('close', (code) => {
     console.log(`Python script finished with code: ${code}`);
-    
+
     // Clean up input file
     fs.unlinkSync(inputFile);
 
     if (code === 0) {
       // Get list of generated PDF files (including from protected/unprotected subfolders)
       let pdfFiles = [];
-      
+
       // Check main folder
       if (fs.existsSync(outputFolder)) {
         const mainPdfs = fs.readdirSync(outputFolder)
@@ -174,7 +174,7 @@ app.post('/api/generate-pdfs', upload.single('excelFile'), (req, res) => {
             location: 'main'
           }));
         pdfFiles.push(...mainPdfs);
-        
+
         // Check protected subfolder
         const protectedPath = path.join(outputFolder, 'protected');
         if (fs.existsSync(protectedPath)) {
@@ -188,7 +188,7 @@ app.post('/api/generate-pdfs', upload.single('excelFile'), (req, res) => {
             }));
           pdfFiles.push(...protectedPdfs);
         }
-        
+
         // Check unprotected subfolder
         const unprotectedPath = path.join(outputFolder, 'unprotected');
         if (fs.existsSync(unprotectedPath)) {
@@ -236,21 +236,21 @@ app.post('/api/generate-pdfs', upload.single('excelFile'), (req, res) => {
 // API endpoint to get PDF file
 app.get('/api/pdf/:filename', (req, res) => {
   const filename = req.params.filename;
-  
+
   // Search for the file in multiple possible locations
   const possiblePaths = [
     path.join(outputDir, filename), // Default location
     path.join('.', filename), // Current directory
   ];
-  
+
   // Add dynamic folder paths (search for folders matching pattern)
   try {
     const currentDir = fs.readdirSync('.');
     const outputFolders = currentDir.filter(item => {
-      return fs.statSync(item).isDirectory() && 
-             (item.startsWith('output_') || item.startsWith('default_'));
+      return fs.statSync(item).isDirectory() &&
+        (item.startsWith('output_') || item.startsWith('default_'));
     });
-    
+
     outputFolders.forEach(folder => {
       possiblePaths.push(path.join('.', folder, filename));
       // Also check protected and unprotected subfolders
@@ -260,7 +260,7 @@ app.get('/api/pdf/:filename', (req, res) => {
   } catch (error) {
     console.error('Error scanning for output folders:', error);
   }
-  
+
   // Try each possible path
   let foundPath = null;
   for (const filePath of possiblePaths) {
@@ -269,7 +269,7 @@ app.get('/api/pdf/:filename', (req, res) => {
       break;
     }
   }
-  
+
   if (foundPath) {
     console.log(`[DEBUG] Found PDF at: ${foundPath}`);
     res.setHeader('Content-Type', 'application/pdf');
@@ -294,7 +294,7 @@ app.get('/api/templates', (req, res) => {
         filename: file,
         displayName: file  // Show actual filename
       }));
-    
+
     res.json({
       success: true,
       templates: templateFiles
@@ -314,7 +314,7 @@ app.get('/api/folders', (req, res) => {
     console.log('[DEBUG] Scanning for PDF folders...');
     const allItems = fs.readdirSync('.');
     console.log('[DEBUG] All items in directory:', allItems.length);
-    
+
     const folders = allItems
       .filter(item => {
         const isDirectory = fs.statSync(item).isDirectory();
@@ -324,32 +324,32 @@ app.get('/api/folders', (req, res) => {
       })
       .map(folder => {
         let pdfCount = 0;
-        
+
         try {
           // Check for PDFs directly in the folder
           const directPdfs = fs.readdirSync(folder).filter(file => file.endsWith('.pdf'));
           pdfCount += directPdfs.length;
-          
+
           // Check for PDFs in protected and unprotected subfolders
           const protectedPath = path.join(folder, 'protected');
           const unprotectedPath = path.join(folder, 'unprotected');
-          
+
           if (fs.existsSync(protectedPath) && fs.statSync(protectedPath).isDirectory()) {
             const protectedPdfs = fs.readdirSync(protectedPath).filter(file => file.endsWith('.pdf'));
             pdfCount += protectedPdfs.length;
             console.log(`[DEBUG] Folder ${folder}/protected: ${protectedPdfs.length} PDFs`);
           }
-          
+
           if (fs.existsSync(unprotectedPath) && fs.statSync(unprotectedPath).isDirectory()) {
             const unprotectedPdfs = fs.readdirSync(unprotectedPath).filter(file => file.endsWith('.pdf'));
             pdfCount += unprotectedPdfs.length;
             console.log(`[DEBUG] Folder ${folder}/unprotected: ${unprotectedPdfs.length} PDFs`);
           }
-          
+
         } catch (error) {
           console.error(`[ERROR] Error scanning folder ${folder}:`, error.message);
         }
-        
+
         console.log(`[DEBUG] Folder ${folder}: ${pdfCount} total PDFs`);
         return {
           name: folder,
@@ -357,9 +357,9 @@ app.get('/api/folders', (req, res) => {
         };
       })
       .filter(folder => folder.pdfCount > 0); // Only show folders with PDFs
-    
+
     console.log('[DEBUG] Final folders list:', folders);
-    
+
     res.json({
       success: true,
       folders: folders
@@ -379,16 +379,16 @@ app.post('/api/send-emails-brevo', (req, res) => {
   // Set timeout for email sending (1 hour should be sufficient for large batches)
   req.setTimeout(3600000); // 1 hour in milliseconds
   res.setTimeout(3600000); // 1 hour in milliseconds
-  
+
   const { emailData, folderName } = req.body;
-  
+
   if (!emailData || !folderName) {
     return res.status(400).json({
       success: false,
       message: 'Email data and folder name are required'
     });
   }
-  
+
   const folderPath = path.resolve('.', folderName);
   if (!fs.existsSync(folderPath)) {
     return res.status(404).json({
@@ -396,15 +396,15 @@ app.post('/api/send-emails-brevo', (req, res) => {
       message: 'PDF folder not found'
     });
   }
-  
+
   try {
     // Create temporary JSON file with email data
     const emailDataFile = path.resolve('.', 'temp_email_data.json');
     fs.writeFileSync(emailDataFile, JSON.stringify(emailData, null, 2));
-    
+
     console.log(`[DEBUG] Sending ${emailData.length} emails via Brevo`);
     console.log(`[DEBUG] PDF folder: ${folderPath}`);
-    
+
     // Execute Brevo email service
     const python = spawn('python', [
       'brevo_email_service.py',
@@ -414,23 +414,23 @@ app.post('/api/send-emails-brevo', (req, res) => {
     ], {
       encoding: 'utf8'
     });
-    
+
     let stdout = '';
     let stderr = '';
-    
+
     python.stdout.on('data', (data) => {
       stdout += data.toString();
       console.log(`[BREVO] ${data.toString().trim()}`);
     });
-    
+
     python.stderr.on('data', (data) => {
       stderr += data.toString();
       console.error(`[BREVO ERROR] ${data.toString().trim()}`);
     });
-    
+
     python.on('close', (code) => {
       console.log(`[DEBUG] Brevo service finished with code: ${code}`);
-      
+
       // Clean up temp file
       try {
         if (fs.existsSync(emailDataFile)) {
@@ -439,7 +439,7 @@ app.post('/api/send-emails-brevo', (req, res) => {
       } catch (e) {
         console.warn('Could not clean up temp email data file');
       }
-      
+
       if (code === 0) {
         // Try to read results
         let results = null;
@@ -451,7 +451,7 @@ app.post('/api/send-emails-brevo', (req, res) => {
         } catch (e) {
           console.warn('Could not read email results');
         }
-        
+
         res.json({
           success: true,
           message: `Email sending completed`,
@@ -467,7 +467,7 @@ app.post('/api/send-emails-brevo', (req, res) => {
         });
       }
     });
-    
+
     python.on('error', (error) => {
       console.error('[ERROR] Failed to start Brevo email service:', error);
       res.status(500).json({
@@ -476,7 +476,7 @@ app.post('/api/send-emails-brevo', (req, res) => {
         error: error.message
       });
     });
-    
+
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -491,39 +491,39 @@ app.post('/api/combine-pdfs', (req, res) => {
   // Set timeout for PDF combining (30 minutes should be sufficient)
   req.setTimeout(1800000); // 30 minutes in milliseconds
   res.setTimeout(1800000); // 30 minutes in milliseconds
-  
+
   const { folderName, outputName } = req.body;
-  
+
   if (!folderName || !outputName) {
     return res.status(400).json({
       success: false,
       message: 'Folder name and output name are required'
     });
   }
-  
+
   const folderPath = path.resolve('.', folderName);
   const outputFileName = `${outputName}.pdf`;
-  
+
   if (!fs.existsSync(folderPath)) {
     return res.status(404).json({
       success: false,
       message: 'Folder not found'
     });
   }
-  
+
   try {
     console.log(`[DEBUG] Starting combine PDFs process for folder: ${folderName}`);
     console.log(`[DEBUG] Folder path: ${folderPath}`);
     console.log(`[DEBUG] Output filename: ${outputFileName}`);
-    
+
     // Only combine unprotected PDFs (since protected ones are identical but password-protected)
     let pdfFiles = [];
     let outputPath;
-    
+
     // Check for unprotected subfolder first (new dual structure)
     const unprotectedPath = path.join(folderPath, 'unprotected');
     console.log(`[DEBUG] Checking unprotected path: ${unprotectedPath}`);
-    
+
     if (fs.existsSync(unprotectedPath) && fs.statSync(unprotectedPath).isDirectory()) {
       console.log(`[DEBUG] Unprotected folder exists, scanning for PDFs...`);
       const unprotectedPdfs = fs.readdirSync(unprotectedPath)
@@ -543,52 +543,52 @@ app.post('/api/combine-pdfs', (req, res) => {
       outputPath = path.resolve(folderPath, outputFileName);
       console.log(`[DEBUG] Found ${directPdfs.length} PDFs in main folder (legacy structure)`);
     }
-    
+
     if (pdfFiles.length === 0) {
       return res.status(400).json({
         success: false,
         message: 'No PDF files found in the selected folder'
       });
     }
-    
+
     console.log(`[DEBUG] Combining PDFs and saving to: ${outputPath}`);
-    
+
     // Use dedicated Python script to combine PDFs
     console.log(`[DEBUG] Combining ${pdfFiles.length} PDFs from ${folderName}`);
     console.log(`[DEBUG] Output file: ${outputPath}`);
-    
+
     // Create temporary file for JSON data to avoid command line escaping issues
     const tempJsonFile = path.resolve('.', `temp_combine_${Date.now()}.json`);
-    
+
     try {
       fs.writeFileSync(tempJsonFile, JSON.stringify(pdfFiles));
       console.log(`[DEBUG] Created temp JSON file: ${tempJsonFile}`);
-      
+
       const pythonArgs = [
         'combine_pdfs.py',
         '--files-from-file', tempJsonFile,
         '--output', outputPath
       ];
-      
+
       console.log(`[DEBUG] Python command: python ${pythonArgs.join(' ')}`);
       console.log(`[DEBUG] Files JSON written to temp file: ${pdfFiles.length} files`);
-      
+
       const python = spawn('python', pythonArgs, {
         encoding: 'utf8',
         stdio: ['pipe', 'pipe', 'pipe']
       });
-      
+
       let stdout = '';
       let stderr = '';
-      
+
       python.stdout.on('data', (data) => {
         stdout += data.toString();
       });
-      
+
       python.stderr.on('data', (data) => {
         stderr += data.toString();
       });
-      
+
       python.on('close', (code) => {
         // Clean up temp file
         try {
@@ -599,11 +599,11 @@ app.post('/api/combine-pdfs', (req, res) => {
         } catch (cleanupError) {
           console.warn(`[WARNING] Could not clean up temp file: ${cleanupError.message}`);
         }
-        
+
         console.log(`[DEBUG] Python script finished with code: ${code}`);
         console.log(`[DEBUG] Python stdout: ${stdout}`);
         if (stderr) console.log(`[DEBUG] Python stderr: ${stderr}`);
-        
+
         if (code === 0 && fs.existsSync(outputPath)) {
           res.json({
             success: true,
@@ -622,7 +622,7 @@ app.post('/api/combine-pdfs', (req, res) => {
           });
         }
       });
-      
+
       python.on('error', (error) => {
         console.error('[ERROR] Failed to start Python process:', error);
         res.status(500).json({
@@ -631,7 +631,7 @@ app.post('/api/combine-pdfs', (req, res) => {
           error: error.message
         });
       });
-      
+
     } catch (fileError) {
       console.error(`[ERROR] Could not create temp JSON file: ${fileError.message}`);
       return res.status(500).json({
@@ -640,7 +640,7 @@ app.post('/api/combine-pdfs', (req, res) => {
         error: fileError.message
       });
     }
-    
+
   } catch (error) {
     console.error('[ERROR] Exception in combine PDFs endpoint:', error);
     console.error('[ERROR] Stack trace:', error.stack);
@@ -656,99 +656,12 @@ app.post('/api/combine-pdfs', (req, res) => {
 // Serve static files from dist directory (for production)
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// Authentication endpoints (temporarily disabled)
-/*
-app.post('/api/auth/send-otp', async (req, res) => {
-  try {
-    const { email } = req.body;
-    
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email is required'
-      });
-    }
-
-    const result = await AuthService.sendOTP(email);
-    res.json(result);
-    
-  } catch (error) {
-    console.error('[AUTH] Error in send-otp endpoint:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
-  }
-});
-
-app.post('/api/auth/verify-otp', (req, res) => {
-  try {
-    const { email, otp } = req.body;
-    
-    if (!email || !otp) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email and OTP are required'
-      });
-    }
-
-    const result = AuthService.verifyOTP(email, otp);
-    res.json(result);
-    
-  } catch (error) {
-    console.error('[AUTH] Error in verify-otp endpoint:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
-  }
-});
-
-app.post('/api/auth/password-login', (req, res) => {
-  try {
-    const { email, password } = req.body;
-    
-    if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email and password are required'
-      });
-    }
-
-    const result = AuthService.passwordAuth(email, password);
-    res.json(result);
-    
-  } catch (error) {
-    console.error('[AUTH] Error in password-login endpoint:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
-  }
-});
-
-// Get active sessions (admin endpoint)
-app.get('/api/auth/sessions', AuthService.authMiddleware, (req, res) => {
-  try {
-    const sessions = AuthService.getActiveSessions();
-    res.json({
-      success: true,
-      sessions,
-      count: sessions.length
-    });
-  } catch (error) {
-    console.error('[AUTH] Error in sessions endpoint:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
-  }
-});
-*/
+// Authentication endpoints removed temporarily to fix startup issues
+// TODO: Re-enable authentication after PDF generation is working
 
 // API endpoint to check server status
 app.get('/api/status', (req, res) => {
-  res.json({ 
+  res.json({
     status: 'running',
     timestamp: new Date().toISOString(),
     outputDir: path.resolve(outputDir)
@@ -769,7 +682,7 @@ app.get('*', (req, res) => {
 const server = app.listen(port, () => {
   console.log(`PDF Generation Server running at http://localhost:${port}`);
   console.log(`Output directory: ${path.resolve(outputDir)}`);
-  
+
   if (isElectron) {
     console.log('Running in Electron environment');
   } else {
