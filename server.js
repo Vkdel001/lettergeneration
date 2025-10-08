@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import cors from 'cors';
 import { fileURLToPath } from 'url';
-import AuthService from './auth_service.js';
+// import AuthService from './auth_service.js'; // Temporarily disabled
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,7 +43,7 @@ if (!fs.existsSync(outputDir)) {
 }
 
 // API endpoint to generate PDFs using Python
-app.post('/api/generate-pdfs', AuthService.authMiddleware, upload.single('excelFile'), (req, res) => {
+app.post('/api/generate-pdfs', upload.single('excelFile'), (req, res) => {
   // Set timeout to 6 hours (21600000 ms) to match Python script timeout
   req.setTimeout(21600000); // 6 hours in milliseconds
   res.setTimeout(21600000); // 6 hours in milliseconds
@@ -234,7 +234,7 @@ app.post('/api/generate-pdfs', AuthService.authMiddleware, upload.single('excelF
 });
 
 // API endpoint to get PDF file
-app.get('/api/pdf/:filename', AuthService.authMiddleware, (req, res) => {
+app.get('/api/pdf/:filename', (req, res) => {
   const filename = req.params.filename;
   
   // Search for the file in multiple possible locations
@@ -286,7 +286,7 @@ app.get('/api/pdf/:filename', AuthService.authMiddleware, (req, res) => {
 });
 
 // API endpoint to get available templates
-app.get('/api/templates', AuthService.authMiddleware, (req, res) => {
+app.get('/api/templates', (req, res) => {
   try {
     const templateFiles = fs.readdirSync('.')
       .filter(file => file.endsWith('.py') && !file.includes('wrapper') && !file.includes('test'))
@@ -309,7 +309,7 @@ app.get('/api/templates', AuthService.authMiddleware, (req, res) => {
 });
 
 // API endpoint to get available PDF folders
-app.get('/api/folders', AuthService.authMiddleware, (req, res) => {
+app.get('/api/folders', (req, res) => {
   try {
     console.log('[DEBUG] Scanning for PDF folders...');
     const allItems = fs.readdirSync('.');
@@ -375,7 +375,7 @@ app.get('/api/folders', AuthService.authMiddleware, (req, res) => {
 });
 
 // API endpoint to send emails via Brevo
-app.post('/api/send-emails-brevo', AuthService.authMiddleware, (req, res) => {
+app.post('/api/send-emails-brevo', (req, res) => {
   // Set timeout for email sending (1 hour should be sufficient for large batches)
   req.setTimeout(3600000); // 1 hour in milliseconds
   res.setTimeout(3600000); // 1 hour in milliseconds
@@ -487,7 +487,7 @@ app.post('/api/send-emails-brevo', AuthService.authMiddleware, (req, res) => {
 });
 
 // API endpoint to combine PDFs
-app.post('/api/combine-pdfs', AuthService.authMiddleware, (req, res) => {
+app.post('/api/combine-pdfs', (req, res) => {
   // Set timeout for PDF combining (30 minutes should be sufficient)
   req.setTimeout(1800000); // 30 minutes in milliseconds
   res.setTimeout(1800000); // 30 minutes in milliseconds
@@ -656,7 +656,8 @@ app.post('/api/combine-pdfs', AuthService.authMiddleware, (req, res) => {
 // Serve static files from dist directory (for production)
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// Authentication endpoints
+// Authentication endpoints (temporarily disabled)
+/*
 app.post('/api/auth/send-otp', async (req, res) => {
   try {
     const { email } = req.body;
@@ -743,6 +744,7 @@ app.get('/api/auth/sessions', AuthService.authMiddleware, (req, res) => {
     });
   }
 });
+*/
 
 // API endpoint to check server status
 app.get('/api/status', (req, res) => {
