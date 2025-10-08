@@ -128,8 +128,8 @@ def main():
     try:
         # Execute the template script with output folder argument
         print(f"Executing template: {args.template}")
-        # Increased timeout for large files (90 minutes for processing thousands of rows)
-        timeout_seconds = 5400  # 90 minutes
+        # Increased timeout for very large files (6 hours for processing thousands of rows)
+        timeout_seconds = 21600  # 6 hours (6 * 60 * 60)
         print(f"Starting template execution with {timeout_seconds/60:.0f} minute timeout...")
         result = subprocess.run([sys.executable, args.template, '--output', args.output], 
                               capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout_seconds)
