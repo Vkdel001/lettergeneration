@@ -832,6 +832,8 @@ NIC Team
       console.log(`Calling Python script: ${selectedTemplate}`);
       setPythonProgress(10);
 
+      // Note: No timeout set - allows up to 6 hours for large PDF generation jobs
+      // Server is configured with 6-hour timeout to match Python script timeout
       const response = await fetch(`${API_BASE}/api/generate-pdfs`, {
         method: 'POST',
         body: formData

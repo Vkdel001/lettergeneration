@@ -43,6 +43,10 @@ if (!fs.existsSync(outputDir)) {
 
 // API endpoint to generate PDFs using Python
 app.post('/api/generate-pdfs', upload.single('excelFile'), (req, res) => {
+  // Set timeout to 6 hours (21600000 ms) to match Python script timeout
+  req.setTimeout(21600000); // 6 hours in milliseconds
+  res.setTimeout(21600000); // 6 hours in milliseconds
+  
   const { template, outputFolder: customOutputFolder } = req.body;
   const inputFile = req.file.path;
   
@@ -371,6 +375,10 @@ app.get('/api/folders', (req, res) => {
 
 // API endpoint to send emails via Brevo
 app.post('/api/send-emails-brevo', (req, res) => {
+  // Set timeout for email sending (1 hour should be sufficient for large batches)
+  req.setTimeout(3600000); // 1 hour in milliseconds
+  res.setTimeout(3600000); // 1 hour in milliseconds
+  
   const { emailData, folderName } = req.body;
   
   if (!emailData || !folderName) {
@@ -479,6 +487,10 @@ app.post('/api/send-emails-brevo', (req, res) => {
 
 // API endpoint to combine PDFs
 app.post('/api/combine-pdfs', (req, res) => {
+  // Set timeout for PDF combining (30 minutes should be sufficient)
+  req.setTimeout(1800000); // 30 minutes in milliseconds
+  res.setTimeout(1800000); // 30 minutes in milliseconds
+  
   const { folderName, outputName } = req.body;
   
   if (!folderName || !outputName) {
@@ -663,7 +675,7 @@ app.get('*', (req, res) => {
   }
 });
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`PDF Generation Server running at http://localhost:${port}`);
   console.log(`Output directory: ${path.resolve(outputDir)}`);
   
@@ -673,3 +685,10 @@ app.listen(port, () => {
     console.log('Running in standard Node.js environment');
   }
 });
+
+// Set server timeout to 6 hours (21600000 ms) to handle large PDF generation jobs
+server.timeout = 21600000; // 6 hours in milliseconds
+server.keepAliveTimeout = 21600000; // 6 hours in milliseconds
+server.headersTimeout = 21610000; // Slightly longer than keepAliveTimeout
+
+console.log(`Server configured with 6-hour timeout for large PDF processing jobs`);
