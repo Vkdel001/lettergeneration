@@ -662,10 +662,11 @@ app.get('/api/pdf-info/:filename', (req, res) => {
     });
 
     outputFolders.forEach(folder => {
+      // Check combined folder first (most likely location for downloads)
+      possiblePaths.push(path.join('.', folder, 'combined', filename));
       possiblePaths.push(path.join('.', folder, filename));
       possiblePaths.push(path.join('.', folder, 'protected', filename));
       possiblePaths.push(path.join('.', folder, 'unprotected', filename));
-      possiblePaths.push(path.join('.', folder, 'combined', filename)); // NEW: Check combined folder
     });
   } catch (error) {
     console.error('Error scanning for output folders:', error);

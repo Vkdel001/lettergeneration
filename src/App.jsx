@@ -1099,11 +1099,7 @@ NIC Team
 
       // Download the combined PDF
       console.log('[DEBUG] Combined PDF result:', result);
-      const downloadResponse = await fetch(`${API_BASE}/api/pdf/${result.filename}`, {
-        headers: {
-          'Authorization': `Bearer ${authToken}`
-        }
-      });
+      const downloadResponse = await fetch(`${API_BASE}/api/pdf/${result.filename}`);
       if (downloadResponse.ok) {
         const blob = await downloadResponse.blob();
         const url = URL.createObjectURL(blob);
