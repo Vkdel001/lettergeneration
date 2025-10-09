@@ -10,10 +10,10 @@ import TabNavigation from './components/TabNavigation.jsx';
 import DownloadProgress from './components/DownloadProgress.jsx';
 import FileBrowser from './components/FileBrowser.jsx';
 
-// Dynamic API URL - works both locally and on VPS
+// Dynamic API URL - works both locally and on VPS with HTTPS
 const API_BASE = window.location.hostname === 'localhost'
   ? 'http://localhost:3001'
-  : `http://${window.location.hostname}:3001`;
+  : `${window.location.protocol}//${window.location.hostname}/api`;
 
 const PDFGenerator = () => {
   // Authentication state
@@ -68,12 +68,12 @@ const PDFGenerator = () => {
       const token = sessionStorage.getItem('authToken');
       const email = sessionStorage.getItem('userEmail');
       const authTime = sessionStorage.getItem('authTime');
-      
+
       if (token && email && authTime) {
         // Check if session is still valid (8 hours)
         const sessionAge = Date.now() - parseInt(authTime);
         const maxAge = 8 * 60 * 60 * 1000; // 8 hours
-        
+
         if (sessionAge < maxAge) {
           setAuthToken(token);
           setUserEmail(email);
@@ -88,7 +88,7 @@ const PDFGenerator = () => {
         }
       }
     };
-    
+
     checkExistingAuth();
   }, []);
 
@@ -1343,7 +1343,7 @@ NIC Team
         console.log('Starting auto-download (unprotected files only)...');
         const unprotectedFiles = generatedFiles.filter(file => !file.isProtected);
         console.log(`Downloading ${unprotectedFiles.length} unprotected files out of ${generatedFiles.length} total files`);
-        
+
         for (let i = 0; i < unprotectedFiles.length; i++) {
           try {
             await downloadPDFFromServer(unprotectedFiles[i].filename);
@@ -1357,7 +1357,7 @@ NIC Team
             setFailedCount(prev => prev + 1);
           }
         }
-        
+
         if (generatedFiles.length > unprotectedFiles.length) {
           const protectedCount = generatedFiles.length - unprotectedFiles.length;
           console.log(`${protectedCount} protected files were not auto-downloaded`);
@@ -2046,7 +2046,7 @@ NIC Team
                 <Mail className="text-red-600 mr-3" size={24} />
                 <h3 className="text-xl font-bold text-gray-800">Confirm Email Sending</h3>
               </div>
-              
+
               <div className="mb-6">
                 <p className="text-gray-600 mb-4">
                   You are about to send emails to customers. This action cannot be undone.
@@ -2066,7 +2066,7 @@ NIC Team
                   autoFocus
                 />
               </div>
-              
+
               <div className="flex space-x-3">
                 <button
                   onClick={() => {
