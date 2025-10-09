@@ -451,7 +451,7 @@ for index, row in df.iterrows():
     y_pos -= 8  # Increased space between address and salutation
 
     # Add salutation - static for Company
-    salutation_text = "Dear Customer Name,"
+    salutation_text = "Dear Valued Customer,"
     salutation = Paragraph(salutation_text, styles['BodyText'])
     salutation.wrapOn(c, width - 2 * margin, height)
     salutation.drawOn(c, margin, y_pos - salutation.height)
