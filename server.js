@@ -252,6 +252,8 @@ app.get('/api/pdf/:filename', (req, res) => {
     });
 
     outputFolders.forEach(folder => {
+      // Check combined folder first (most likely location for downloads)
+      possiblePaths.push(path.join('.', folder, 'combined', filename));
       possiblePaths.push(path.join('.', folder, filename));
       // Also check protected and unprotected subfolders
       possiblePaths.push(path.join('.', folder, 'protected', filename));
@@ -277,11 +279,16 @@ app.get('/api/pdf/:filename', (req, res) => {
     fs.createReadStream(foundPath).pipe(res);
   } else {
     console.error(`[ERROR] PDF not found: ${filename}`);
-    console.error(`[ERROR] Searched paths:`, possiblePaths);
-    // Additional debug: check if the expected path exists
-    const expectedPath = path.join('.', 'output_JPH_September2025', 'unprotected', filename);
-    console.error(`[DEBUG] Expected path exists: ${fs.existsSync(expectedPath)} - ${expectedPath}`);
-    res.status(404).json({ error: 'File not found' });
+    console.error(`[ERROR] Searched ${possiblePaths.length} paths:`);
+    possiblePaths.forEach((searchPath, index) => {
+      const exists = fs.existsSync(searchPath);
+      console.error(`[DEBUG] ${index + 1}. ${exists ? '✓' : '✗'} ${searchPath}`);
+    });
+    res.status(404).json({ 
+      error: 'File not found',
+      filename: filename,
+      searchedPaths: possiblePaths.length
+    });
   }
 });
 
