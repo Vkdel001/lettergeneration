@@ -5,11 +5,14 @@ import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
 import emailjs from '@emailjs/browser';
 import sicomLogo from './nic2.jpeg'; // Ensure this file exists
-import AuthScreen from './components/AuthScreen';
+import AuthScreen from './components/AuthScreen.jsx';
+import TabNavigation from './components/TabNavigation.jsx';
+import DownloadProgress from './components/DownloadProgress.jsx';
+import FileBrowser from './components/FileBrowser.jsx';
 
 // Dynamic API URL - works both locally and on VPS
-const API_BASE = window.location.hostname === 'localhost' 
-  ? 'http://localhost:3001' 
+const API_BASE = window.location.hostname === 'localhost'
+  ? 'http://localhost:3001'
   : `http://${window.location.hostname}:3001`;
 
 const PDFGenerator = () => {
@@ -38,7 +41,7 @@ const PDFGenerator = () => {
   const [selectedTemplate, setSelectedTemplate] = useState('SPH_Fresh.py');
   const [availableTemplates, setAvailableTemplates] = useState([]);
   const [templatesLoading, setTemplatesLoading] = useState(true);
-  const [mode, setMode] = useState('generate'); // 'generate' or 'combine'
+  // Removed mode state - using workflow-based UI instead
   const [selectedFolder, setSelectedFolder] = useState('');
   const [availableFolders, setAvailableFolders] = useState([]);
   const [combinedPdfName, setCombinedPdfName] = useState('');
@@ -51,6 +54,11 @@ const PDFGenerator = () => {
     publicKey: '6IXn9qDThhQLQKdjt'
   });
   const [showEmailConfig, setShowEmailConfig] = useState(false);
+
+  // UI state for enhanced interface
+  const [activeTab, setActiveTab] = useState('combine');
+  const [showDownloadProgress, setShowDownloadProgress] = useState(false);
+  const [downloadInfo, setDownloadInfo] = useState(null);
 
   // Check for existing authentication on component mount (DISABLED FOR TESTING)
   /*
@@ -936,6 +944,31 @@ NIC Team
     }
   };
 
+  // Enhanced download with progress
+  const downloadWithProgress = async (filename) => {
+    try {
+      // Get file info first
+      const infoResponse = await fetch(`${API_BASE}/api/pdf-info/${filename}`);
+      if (infoResponse.ok) {
+        const fileInfo = await infoResponse.json();
+        if (fileInfo.success) {
+          setDownloadInfo({
+            filename: filename,
+            size: fileInfo.size,
+            estimatedTime: fileInfo.estimatedDownloadTime
+          });
+          setShowDownloadProgress(true);
+          return;
+        }
+      }
+      // Fallback to direct download if file info fails
+      await downloadPDFFromServer(filename);
+    } catch (error) {
+      console.error('Download failed:', error);
+      throw error;
+    }
+  };
+
   // Download PDF from server
   const downloadPDFFromServer = async (filename) => {
     try {
@@ -1405,544 +1438,644 @@ NIC Team
               </button>
             </div>
 
-            {/* Mode Selector */}
-            <div className="bg-gradient-to-r from-purple-100 via-pink-100 to-indigo-100 rounded-xl shadow-lg border-2 border-purple-300 p-8 mb-8">
-          <h2 className="text-2xl font-bold mb-6 text-gray-800 text-center">Choose Your Operation</h2>
-          <div className="grid grid-cols-2 gap-6">
-            <button
-              onClick={() => setMode('generate')}
-              className={`p-8 rounded-xl border-3 transition-all duration-300 transform hover:scale-105 shadow-lg ${mode === 'generate'
-                ? 'border-blue-500 bg-gradient-to-br from-blue-400 to-blue-600 text-white shadow-blue-300'
-                : 'border-blue-300 bg-gradient-to-br from-blue-100 to-blue-200 text-blue-800 hover:from-blue-200 hover:to-blue-300 hover:border-blue-400 hover:shadow-blue-200'
-                }`}
-            >
-              <FileText className="mx-auto mb-4" size={40} />
-              <h3 className="font-bold text-xl mb-3">📄 Generate PDFs</h3>
-              <p className="text-sm opacity-90 font-medium">Upload Excel file and create Arrears letters automatically</p>
-            </button>
-            <button
-              onClick={() => setMode('combine')}
-              className={`p-8 rounded-xl border-3 transition-all duration-300 transform hover:scale-105 shadow-lg ${mode === 'combine'
-                ? 'border-emerald-500 bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-emerald-300'
-                : 'border-emerald-300 bg-gradient-to-br from-emerald-100 to-emerald-200 text-emerald-800 hover:from-emerald-200 hover:to-emerald-300 hover:border-emerald-400 hover:shadow-emerald-200'
-                }`}
-            >
-              <Download className="mx-auto mb-4" size={40} />
-              <h3 className="font-bold text-xl mb-3">🔗 Combine PDFs</h3>
-              <p className="text-sm opacity-90 font-medium">Select a folder and merge all Arrears letters into single file for printing</p>
-            </button>
-          </div>
-        </div>
+            {/* Tab Navigation */}
+            <TabNavigation
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+            />
 
-        {mode === 'generate' && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-8">
-            <h2 className="text-2xl font-bold mb-6 flex items-center text-gray-800">
-              <FileText className="mr-3 text-blue-600" size={28} />
-              Upload Excel File
-            </h2>
-            <div className="border-2 border-dashed border-blue-300 rounded-xl p-12 text-center bg-blue-50 hover:bg-blue-100 transition-colors">
-              <input
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={handleFileUpload}
-                className="hidden"
-                id="file-upload"
-                aria-label="Upload Excel file"
-              />
-              <label htmlFor="file-upload" className="cursor-pointer">
-                <Upload className="mx-auto h-16 w-16 text-blue-500 mb-6" />
-                <p className="text-lg font-medium text-gray-700 mb-3">Click to upload Excel file</p>
-                <p className="text-sm text-gray-500">Drag and drop your Excel file here or click to browse</p>
-              </label>
-            </div>
-
-            {file && (
-              <div className="mt-6 p-5 bg-green-50 border border-green-200 rounded-xl">
-                <p className="text-green-800 flex items-center text-base font-medium">
-                  <CheckCircle className="mr-3 text-green-600" size={20} />
-                  File: {file.name} ({data.length} records loaded)
-                </p>
-              </div>
-            )}
-
-            {error && (
-              <div className="mt-6 p-5 bg-red-50 border border-red-200 rounded-xl">
-                <p className="text-red-800 flex items-center text-base font-medium">
-                  <AlertCircle className="mr-3 text-red-600" size={20} />
-                  {error}
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {mode === 'generate' && data.length > 0 && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-8">
-            <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center">
-              <Mail className="mr-3 text-blue-600" size={28} />
-              Generate & Send PDFs
-            </h2>
-
-            {/* Two-Column Layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-
-              {/* Left Column: Template Information */}
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200 p-6">
-                <h3 className="text-lg font-bold mb-4 text-gray-800 flex items-center">
-                  <FileText className="mr-2 text-blue-600" size={20} />
-                  PDF Template
-                </h3>
-
-                {/* Template Display */}
-                <div className={`w-full px-4 py-3 text-sm border rounded-lg font-medium mb-3 ${file && !getTemplateForFile(file.name)
-                  ? 'border-red-200 bg-red-50 text-red-700'
-                  : 'border-blue-200 bg-white text-gray-700'
-                  }`}>
-                  {file ? (() => {
-                    const autoTemplate = getTemplateForFile(file.name);
-                    if (autoTemplate) {
-                      const templateInfo = availableTemplates.find(t => t.filename === autoTemplate);
-                      return templateInfo ? templateInfo.displayName : autoTemplate;
-                    }
-                    return 'ERROR: Unsupported file format';
-                  })() : 'Upload file to see template'}
-                </div>
-
-                {/* Template Validation */}
-                {file && (() => {
-                  const autoTemplate = getTemplateForFile(file.name);
-                  if (autoTemplate) {
-                    const templateExists = availableTemplates.find(t => t.filename === autoTemplate);
-                    return (
-                      <div className={`p-3 text-xs rounded-lg ${templateExists
-                        ? 'bg-green-100 text-green-700 border border-green-200'
-                        : 'bg-red-100 text-red-700 border border-red-200'
-                        }`}>
-                        {templateExists
-                          ? `✓ Auto-selected for "${file.name}"`
-                          : `❌ Template not found`
-                        }
+            {/* Tab Content */}
+            {activeTab === 'combine' && (
+              <>
+                {/* 3-Step Workflow Header */}
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl shadow-sm border border-blue-200 p-6 mb-8">
+                  <h2 className="text-2xl font-bold mb-4 text-gray-800 text-center">PDF Generation Workflow</h2>
+                  <div className="flex flex-col md:flex-row items-center justify-center space-y-4 md:space-y-0 md:space-x-8">
+                    <div className="flex items-center text-center">
+                      <div className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold mr-3">1</div>
+                      <div>
+                        <p className="font-semibold text-gray-800">Upload Excel</p>
+                        <p className="text-sm text-gray-600">Select your data file</p>
                       </div>
-                    );
-                  } else {
-                    return (
-                      <div className="p-3 text-xs rounded-lg bg-red-100 text-red-700 border border-red-200">
-                        ❌ Unsupported file format
+                    </div>
+                    <div className="hidden md:block text-gray-400">→</div>
+                    <div className="flex items-center text-center">
+                      <div className="w-10 h-10 bg-green-600 text-white rounded-full flex items-center justify-center font-bold mr-3">2</div>
+                      <div>
+                        <p className="font-semibold text-gray-800">Generate PDFs</p>
+                        <p className="text-sm text-gray-600">Create individual letters</p>
                       </div>
-                    );
-                  }
-                })()}
-              </div>
-
-              {/* Right Column: Processing Options */}
-              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border border-green-200 p-6">
-                <h3 className="text-lg font-bold mb-4 text-gray-800 flex items-center">
-                  <Settings className="mr-2 text-green-600" size={20} />
-                  Processing Options
-                </h3>
-
-                {/* Time & Folder Info */}
-                <div className="space-y-3 mb-4">
-                  <div className="flex items-center text-sm text-gray-700">
-                    <span className="text-green-600 mr-2">⏱️</span>
-                    <span className="font-medium">Time:</span>
-                    <span className="ml-1">~1 minute</span>
-                  </div>
-                  {file && (
-                    <div className="flex items-center text-sm text-gray-700">
-                      <span className="text-blue-600 mr-2">📁</span>
-                      <span className="font-medium">Folder:</span>
-                      <span className="ml-1 truncate">{getOutputFolderName(file.name)}/</span>
                     </div>
-                  )}
+                    <div className="hidden md:block text-gray-400">→</div>
+                    <div className="flex items-center text-center">
+                      <div className="w-10 h-10 bg-purple-600 text-white rounded-full flex items-center justify-center font-bold mr-3">3</div>
+                      <div>
+                        <p className="font-semibold text-gray-800">Combine & Download</p>
+                        <p className="text-sm text-gray-600">Merge into single file</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Download/Email Options */}
-                <div className="space-y-3">
-                  <label className="flex items-center cursor-pointer p-3 bg-white rounded-lg border border-blue-200 hover:bg-blue-50 transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={autoDownload}
-                      onChange={(e) => setAutoDownload(e.target.checked)}
-                      disabled={sendEmails}
-                      className="mr-3 w-4 h-4 text-blue-600"
-                    />
-                    <Download className="mr-2 text-blue-600" size={16} />
-                    <span className="text-sm font-medium text-gray-800">Auto-download PDFs</span>
-                  </label>
-
-                  <label className="flex items-center cursor-pointer p-3 bg-white rounded-lg border border-green-200 hover:bg-green-50 transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={sendEmails}
-                      onChange={(e) => {
-                        setSendEmails(e.target.checked);
-                        if (e.target.checked) setAutoDownload(false);
-                      }}
-                      className="mr-3 w-4 h-4 text-green-600"
-                    />
-                    <Mail className="mr-2 text-green-600" size={16} />
-                    <span className="text-sm font-medium text-gray-800">Send via email</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-
-
-
-            <div className="flex gap-6 mb-8">
-              <button
-                onClick={handleGeneratePDFs}
-                disabled={processing}
-                className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-400 disabled:to-gray-500 text-white px-8 py-4 rounded-xl font-semibold text-lg flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 disabled:transform-none"
-                aria-label={sendEmails ? 'Generate and email PDFs' : 'Generate all PDFs'}
-              >
-                {processing ? (
-                  <>
-                    <Loader className="animate-spin mr-3" size={24} />
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    {sendEmails ? <Mail className="mr-3" size={24} /> : <FileText className="mr-3" size={24} />}
-                    {sendEmails ? 'Generate & Email' : 'Generate All PDFs'} ({data.length})
-                  </>
-                )}
-              </button>
-
-              {results.length > 0 && !processing && !sendEmails && (
-                <button
-                  onClick={downloadAllPDFs}
-                  className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white px-8 py-4 rounded-xl font-semibold text-lg flex items-center shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
-                  aria-label="Download all generated PDFs"
-                >
-                  <Download className="mr-3" size={24} />
-                  Download All
-                </button>
-              )}
-            </div>
-
-            {processing && (
-              <div className="mb-4">
-                <div className="bg-white rounded-lg p-4 border">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm font-medium text-gray-700">Overall Progress</span>
-                    <span className="text-sm text-gray-600">{Math.round(progress)}%</span>
-                  </div>
-                  <div className="bg-gray-200 rounded-full h-3 mb-3">
-                    <div
-                      className="bg-blue-600 h-3 rounded-full transition-all duration-300"
-                      style={{ width: `${progress}%` }}
-                    ></div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <div className="text-gray-600">Batch Progress</div>
-                      <div className="font-medium">{currentBatch} / {totalBatches}</div>
+                {/* Step 1: Upload Excel File */}
+                <div className={`bg-white rounded-xl shadow-sm border p-8 mb-8 ${!file ? 'border-blue-300 bg-blue-50' : 'border-gray-200'}`}>
+                  <div className="flex items-center mb-6">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold mr-3 ${!file ? 'bg-blue-600 text-white' : 'bg-green-600 text-white'}`}>
+                      {!file ? '1' : '✓'}
                     </div>
-                    <div>
-                      <div className="text-gray-600">Items Processed</div>
-                      <div className="font-medium">{processedCount} / {data.length}</div>
-                    </div>
+                    <h2 className="text-2xl font-bold text-gray-800">Upload Excel File</h2>
+                    {file && <span className="ml-3 text-sm text-green-600 font-medium">✓ Completed</span>}
                   </div>
 
-                  {failedCount > 0 && (
-                    <div className="mt-2 text-sm">
-                      <span className="text-red-600">Failed: {failedCount}</span>
+                  {!file && (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-8">
+                      <h2 className="text-2xl font-bold mb-6 flex items-center text-gray-800">
+                        <FileText className="mr-3 text-blue-600" size={28} />
+                        Upload Excel File
+                      </h2>
+                      <div className="border-2 border-dashed border-blue-300 rounded-xl p-12 text-center bg-blue-50 hover:bg-blue-100 transition-colors">
+                        <input
+                          type="file"
+                          accept=".xlsx,.xls"
+                          onChange={handleFileUpload}
+                          className="hidden"
+                          id="file-upload"
+                          aria-label="Upload Excel file"
+                        />
+                        <label htmlFor="file-upload" className="cursor-pointer">
+                          <Upload className="mx-auto h-16 w-16 text-blue-500 mb-6" />
+                          <p className="text-lg font-medium text-gray-700 mb-3">Click to upload Excel file</p>
+                          <p className="text-sm text-gray-500">Drag and drop your Excel file here or click to browse</p>
+                        </label>
+                      </div>
+
+                      {file && (
+                        <div className="mt-6 p-5 bg-green-50 border border-green-200 rounded-xl">
+                          <p className="text-green-800 flex items-center text-base font-medium">
+                            <CheckCircle className="mr-3 text-green-600" size={20} />
+                            File: {file.name} ({data.length} records loaded)
+                          </p>
+                        </div>
+                      )}
+
+                      {error && (
+                        <div className="mt-6 p-5 bg-red-50 border border-red-200 rounded-xl">
+                          <p className="text-red-800 flex items-center text-base font-medium">
+                            <AlertCircle className="mr-3 text-red-600" size={20} />
+                            {error}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  <div className="mt-3">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-xs text-gray-600">Python PDF Generation</span>
-                      <span className="text-xs text-gray-600">{Math.round(pythonProgress)}%</span>
-                    </div>
-                    <div className="bg-gray-200 rounded-full h-2">
-                      <div
-                        className="bg-purple-600 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${pythonProgress}%` }}
-                      ></div>
-                    </div>
-                  </div>
-
-                  <div className="mt-2 text-xs text-gray-500">
-                    Using ${selectedTemplate.replace('.py', '')} template
-                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-        )}
 
-        {mode === 'combine' && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-8">
-            <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center">
-              <Download className="mr-3 text-green-600" size={28} />
-              Combine PDFs
-            </h2>
-
-            {/* Folder Selection */}
-            <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-xl border border-green-200 p-6 mb-6">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-gray-800">Select PDF Folder</h3>
-                <button
-                  onClick={() => {
-                    const fetchFolders = async () => {
-                      try {
-                        console.log('[DEBUG] Refreshing folders...');
-                        const response = await fetch(`${API_BASE}/api/folders`, {
-                          headers: {
-                            'Authorization': `Bearer ${authToken}`
-                          }
-                        });
-                        const data = await response.json();
-                        console.log('[DEBUG] Folders response:', data);
-                        if (data.success) {
-                          console.log('[DEBUG] Available folders:', data.folders);
-                          setAvailableFolders(data.folders);
-                        }
-                      } catch (error) {
-                        console.error('Failed to refresh folders:', error);
-                      }
-                    };
-                    fetchFolders();
-                  }}
-                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                >
-                  🔄 Refresh
-                </button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-3">
-                    Available Folders ({availableFolders.length} found)
-                  </label>
-                  <select
-                    value={selectedFolder}
-                    onChange={(e) => setSelectedFolder(e.target.value)}
-                    className="w-full px-4 py-3 text-base border border-gray-200 rounded-lg bg-white text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-green-500"
-                    disabled={processing}
-                  >
-                    <option value="">
-                      {availableFolders.length === 0 ? 'No folders found...' : 'Select a folder...'}
-                    </option>
-                    {availableFolders.map(folder => (
-                      <option key={folder.name} value={folder.name}>
-                        {folder.name} ({folder.pdfCount} PDFs)
-                      </option>
-                    ))}
-                  </select>
-
-                  {availableFolders.length === 0 && (
-                    <p className="text-xs text-gray-500 mt-2">
-                      💡 Generate some PDFs first, then refresh to see available folders
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-3">Combined PDF Name</label>
-                  <input
-                    type="text"
-                    value={combinedPdfName}
-                    onChange={(e) => setCombinedPdfName(e.target.value)}
-                    placeholder="Enter filename (without .pdf)"
-                    className="w-full px-4 py-3 text-base border border-gray-200 rounded-lg bg-white text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-green-500"
-                    disabled={processing}
-                  />
-                </div>
-              </div>
-
-              {selectedFolder && (
-                <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                  <p className="text-sm text-blue-700">
-                    📁 Selected: <span className="font-medium">{selectedFolder}</span>
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Combine Button */}
-            <div className="flex justify-center mb-6">
-              <button
-                onClick={handleCombinePDFs}
-                disabled={processing || !selectedFolder || !combinedPdfName.trim()}
-                className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:from-gray-400 disabled:to-gray-500 text-white px-8 py-4 rounded-xl font-semibold text-lg flex items-center shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 disabled:transform-none"
-              >
-                {processing ? (
-                  <>
-                    <Loader className="animate-spin mr-3" size={24} />
-                    Combining PDFs...
-                  </>
-                ) : (
-                  <>
-                    <Download className="mr-3" size={24} />
-                    Combine PDFs
-                  </>
-                )}
-              </button>
-            </div>
-
-            {/* Progress Bar for Combine Mode */}
-            {processing && (
-              <div className="mb-6">
-                <div className="bg-white rounded-lg p-4 border">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm font-medium text-gray-700">Combining Progress</span>
-                    <span className="text-sm text-gray-600">{Math.round(progress)}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-3">
-                    <div
-                      className="bg-green-600 h-3 rounded-full transition-all duration-300"
-                      style={{ width: `${progress}%` }}
-                    ></div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {(results.length > 0 || emailResults.length > 0) && mode === 'generate' && (
-          <div className="bg-gray-50 rounded-lg p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Processing Results</h3>
-              <div className="text-sm text-gray-600">
-                Success: {processedCount} | Failed: {failedCount}
-              </div>
-            </div>
-
-            {/* Summary Stats */}
-            <div className="grid grid-cols-3 gap-4 mb-4">
-              <div className="bg-green-50 p-3 rounded-lg text-center">
-                <div className="text-2xl font-bold text-green-600">{processedCount}</div>
-                <div className="text-sm text-green-700">Processed</div>
-              </div>
-              <div className="bg-red-50 p-3 rounded-lg text-center">
-                <div className="text-2xl font-bold text-red-600">{failedCount}</div>
-                <div className="text-sm text-red-700">Failed</div>
-              </div>
-              <div className="bg-blue-50 p-3 rounded-lg text-center">
-                <div className="text-2xl font-bold text-blue-600">{data.length}</div>
-                <div className="text-sm text-blue-700">Total</div>
-              </div>
-            </div>
-
-            <h3 className="text-lg font-semibold mb-4">Detailed Results</h3>
-
-            {/* PDF Generation Results */}
-            {results.length > 0 && (
-              <div className="mb-6">
-                <h4 className="font-medium text-gray-700 mb-2">PDF Generation ({results.length})</h4>
-                <div className="bg-white rounded border max-h-40 overflow-y-auto">
-                  {results.slice(-10).map((result, index) => (
-                    <div key={index} className="px-3 py-2 border-b last:border-b-0 flex justify-between items-center">
-                      <div className="flex-1">
-                        <span className="text-sm font-medium">{result.policyNo}</span>
-                        <span className="text-xs text-gray-500 ml-2">{result.name}</span>
+                {/* Step 2: Generate PDFs */}
+                {data.length > 0 && (
+                  <div className={`bg-white rounded-xl shadow-sm border p-8 mb-8 ${results.length === 0 && data.length > 0 ? 'border-green-300 bg-green-50' : 'border-gray-200'}`}>
+                    <div className="flex items-center mb-6">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold mr-3 ${results.length === 0 ? 'bg-green-600 text-white' : 'bg-green-600 text-white'}`}>
+                        {results.length === 0 ? '2' : '✓'}
                       </div>
-                      <div className="flex items-center">
-                        {result.status === 'downloaded' && (
-                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Downloaded</span>
-                        )}
-                        {result.status === 'generated' && (
-                          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Generated</span>
-                        )}
-                        {result.status === 'failed' && (
-                          <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">Failed</span>
-                        )}
-                      </div>
+                      <h2 className="text-2xl font-bold text-gray-800">Generate PDFs</h2>
+                      {results.length > 0 && <span className="ml-3 text-sm text-green-600 font-medium">✓ Completed</span>}
                     </div>
-                  ))}
-                  {results.length > 10 && (
-                    <div className="px-3 py-2 text-xs text-gray-500 text-center">
-                      Showing last 10 of {results.length} results
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
 
-            {/* Email Results */}
-            {emailResults.length > 0 && (
-              <div className="mb-6">
-                <h4 className="font-medium text-gray-700 mb-2">Email Sending ({emailResults.length})</h4>
-                <div className="bg-white rounded border max-h-40 overflow-y-auto">
-                  {emailResults.slice(-10).map((result, index) => (
-                    <div key={index} className="px-3 py-2 border-b last:border-b-0 flex justify-between items-center">
-                      <div className="flex-1">
-                        <span className="text-sm font-medium">{result.policyNo}</span>
-                        <span className="text-xs text-gray-500 ml-2">{result.email}</span>
-                      </div>
-                      <div className="flex items-center">
-                        {result.status === 'sent' && (
-                          <CheckCircle className="text-green-600 mr-1" size={16} />
-                        )}
-                        {result.status === 'failed' && (
-                          <AlertCircle className="text-red-600 mr-1" size={16} />
-                        )}
-                        <span className={`text-xs px-2 py-1 rounded ${result.status === 'sent'
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
+                    {/* Two-Column Layout */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+
+                      {/* Left Column: Template Information */}
+                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200 p-6">
+                        <h3 className="text-lg font-bold mb-4 text-gray-800 flex items-center">
+                          <FileText className="mr-2 text-blue-600" size={20} />
+                          PDF Template
+                        </h3>
+
+                        {/* Template Display */}
+                        <div className={`w-full px-4 py-3 text-sm border rounded-lg font-medium mb-3 ${file && !getTemplateForFile(file.name)
+                          ? 'border-red-200 bg-red-50 text-red-700'
+                          : 'border-blue-200 bg-white text-gray-700'
                           }`}>
-                          {result.status === 'sent' ? 'Sent' : 'Failed'}
-                        </span>
+                          {file ? (() => {
+                            const autoTemplate = getTemplateForFile(file.name);
+                            if (autoTemplate) {
+                              const templateInfo = availableTemplates.find(t => t.filename === autoTemplate);
+                              return templateInfo ? templateInfo.displayName : autoTemplate;
+                            }
+                            return 'ERROR: Unsupported file format';
+                          })() : 'Upload file to see template'}
+                        </div>
+
+                        {/* Template Validation */}
+                        {file && (() => {
+                          const autoTemplate = getTemplateForFile(file.name);
+                          if (autoTemplate) {
+                            const templateExists = availableTemplates.find(t => t.filename === autoTemplate);
+                            return (
+                              <div className={`p-3 text-xs rounded-lg ${templateExists
+                                ? 'bg-green-100 text-green-700 border border-green-200'
+                                : 'bg-red-100 text-red-700 border border-red-200'
+                                }`}>
+                                {templateExists
+                                  ? `✓ Auto-selected for "${file.name}"`
+                                  : `❌ Template not found`
+                                }
+                              </div>
+                            );
+                          } else {
+                            return (
+                              <div className="p-3 text-xs rounded-lg bg-red-100 text-red-700 border border-red-200">
+                                ❌ Unsupported file format
+                              </div>
+                            );
+                          }
+                        })()}
+                      </div>
+
+                      {/* Right Column: Processing Options */}
+                      <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border border-green-200 p-6">
+                        <h3 className="text-lg font-bold mb-4 text-gray-800 flex items-center">
+                          <Settings className="mr-2 text-green-600" size={20} />
+                          Processing Options
+                        </h3>
+
+                        {/* Time & Folder Info */}
+                        <div className="space-y-3 mb-4">
+                          <div className="flex items-center text-sm text-gray-700">
+                            <span className="text-green-600 mr-2">⏱️</span>
+                            <span className="font-medium">Time:</span>
+                            <span className="ml-1">~1 minute</span>
+                          </div>
+                          {file && (
+                            <div className="flex items-center text-sm text-gray-700">
+                              <span className="text-blue-600 mr-2">📁</span>
+                              <span className="font-medium">Folder:</span>
+                              <span className="ml-1 truncate">{getOutputFolderName(file.name)}/</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Download/Email Options */}
+                        <div className="space-y-3">
+                          <label className="flex items-center cursor-pointer p-3 bg-white rounded-lg border border-blue-200 hover:bg-blue-50 transition-colors">
+                            <input
+                              type="checkbox"
+                              checked={autoDownload}
+                              onChange={(e) => setAutoDownload(e.target.checked)}
+                              disabled={sendEmails}
+                              className="mr-3 w-4 h-4 text-blue-600"
+                            />
+                            <Download className="mr-2 text-blue-600" size={16} />
+                            <span className="text-sm font-medium text-gray-800">Auto-download PDFs</span>
+                          </label>
+
+                          <label className="flex items-center cursor-pointer p-3 bg-white rounded-lg border border-green-200 hover:bg-green-50 transition-colors">
+                            <input
+                              type="checkbox"
+                              checked={sendEmails}
+                              onChange={(e) => {
+                                setSendEmails(e.target.checked);
+                                if (e.target.checked) setAutoDownload(false);
+                              }}
+                              className="mr-3 w-4 h-4 text-green-600"
+                            />
+                            <Mail className="mr-2 text-green-600" size={16} />
+                            <span className="text-sm font-medium text-gray-800">Send via email</span>
+                          </label>
+                        </div>
                       </div>
                     </div>
-                  ))}
-                  {emailResults.length > 10 && (
-                    <div className="px-3 py-2 text-xs text-gray-500 text-center">
-                      Showing last 10 of {emailResults.length} results
+
+                    {/* Generate PDFs Button */}
+                    <div className="flex justify-center mb-6">
+                      <button
+                        onClick={handleGeneratePDFs}
+                        disabled={processing || !file || !getTemplateForFile(file?.name)}
+                        className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-400 disabled:to-gray-500 text-white px-8 py-4 rounded-xl font-semibold text-lg flex items-center shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 disabled:transform-none"
+                      >
+                        {processing ? (
+                          <>
+                            <Loader className="animate-spin mr-3" size={24} />
+                            Generating PDFs...
+                          </>
+                        ) : (
+                          <>
+                            <FileText className="mr-3" size={24} />
+                            Generate {data.length} PDFs
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Progress Bar */}
+                    {processing && (
+                      <div className="mb-6">
+                        <div className="bg-white rounded-lg p-4 border">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-sm font-medium text-gray-700">Generation Progress</span>
+                            <span className="text-sm text-gray-600">{Math.round(progress)}%</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-3">
+                            <div
+                              className="bg-blue-600 h-3 rounded-full transition-all duration-300"
+                              style={{ width: `${progress}%` }}
+                            ></div>
+                          </div>
+                          <div className="mt-2 text-xs text-gray-600">
+                            {processedCount > 0 && (
+                              <span>Processed: {processedCount}/{data.length} | Failed: {failedCount}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+
+
+                    <div className="flex gap-6 mb-8">
+                      <button
+                        onClick={handleGeneratePDFs}
+                        disabled={processing}
+                        className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-400 disabled:to-gray-500 text-white px-8 py-4 rounded-xl font-semibold text-lg flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 disabled:transform-none"
+                        aria-label={sendEmails ? 'Generate and email PDFs' : 'Generate all PDFs'}
+                      >
+                        {processing ? (
+                          <>
+                            <Loader className="animate-spin mr-3" size={24} />
+                            Processing...
+                          </>
+                        ) : (
+                          <>
+                            {sendEmails ? <Mail className="mr-3" size={24} /> : <FileText className="mr-3" size={24} />}
+                            {sendEmails ? 'Generate & Email' : 'Generate All PDFs'} ({data.length})
+                          </>
+                        )}
+                      </button>
+
+                      {results.length > 0 && !processing && !sendEmails && (
+                        <button
+                          onClick={downloadAllPDFs}
+                          className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white px-8 py-4 rounded-xl font-semibold text-lg flex items-center shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                          aria-label="Download all generated PDFs"
+                        >
+                          <Download className="mr-3" size={24} />
+                          Download All
+                        </button>
+                      )}
+                    </div>
+
+                    {processing && (
+                      <div className="mb-4">
+                        <div className="bg-white rounded-lg p-4 border">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-sm font-medium text-gray-700">Overall Progress</span>
+                            <span className="text-sm text-gray-600">{Math.round(progress)}%</span>
+                          </div>
+                          <div className="bg-gray-200 rounded-full h-3 mb-3">
+                            <div
+                              className="bg-blue-600 h-3 rounded-full transition-all duration-300"
+                              style={{ width: `${progress}%` }}
+                            ></div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <div className="text-gray-600">Batch Progress</div>
+                              <div className="font-medium">{currentBatch} / {totalBatches}</div>
+                            </div>
+                            <div>
+                              <div className="text-gray-600">Items Processed</div>
+                              <div className="font-medium">{processedCount} / {data.length}</div>
+                            </div>
+                          </div>
+
+                          {failedCount > 0 && (
+                            <div className="mt-2 text-sm">
+                              <span className="text-red-600">Failed: {failedCount}</span>
+                            </div>
+                          )}
+
+                          <div className="mt-3">
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-xs text-gray-600">Python PDF Generation</span>
+                              <span className="text-xs text-gray-600">{Math.round(pythonProgress)}%</span>
+                            </div>
+                            <div className="bg-gray-200 rounded-full h-2">
+                              <div
+                                className="bg-purple-600 h-2 rounded-full transition-all duration-300"
+                                style={{ width: `${pythonProgress}%` }}
+                              ></div>
+                            </div>
+                          </div>
+
+                          <div className="mt-2 text-xs text-gray-500">
+                            Using ${selectedTemplate.replace('.py', '')} template
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Step 3: Combine PDFs */}
+                <div className={`bg-white rounded-xl shadow-sm border p-8 mb-8 ${results.length > 0 ? 'border-purple-300 bg-purple-50' : 'border-gray-200'}`}>
+                  <div className="flex items-center mb-6">
+                    <div className="w-8 h-8 bg-purple-600 text-white rounded-full flex items-center justify-center font-bold mr-3">3</div>
+                    <h2 className="text-2xl font-bold text-gray-800">Combine PDFs</h2>
+                    {results.length > 0 && <span className="ml-3 text-sm text-purple-600 font-medium">Ready to combine</span>}
+                  </div>
+
+                  {/* Folder Selection */}
+                  <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl border border-purple-200 p-6 mb-6">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-bold text-gray-800">Select PDF Folder</h3>
+                      <button
+                        onClick={() => {
+                          const fetchFolders = async () => {
+                            try {
+                              console.log('[DEBUG] Refreshing folders...');
+                              const response = await fetch(`${API_BASE}/api/folders`, {
+                                headers: {
+                                  'Authorization': `Bearer ${authToken}`
+                                }
+                              });
+                              const data = await response.json();
+                              console.log('[DEBUG] Folders response:', data);
+                              if (data.success) {
+                                console.log('[DEBUG] Available folders:', data.folders);
+                                setAvailableFolders(data.folders);
+                              }
+                            } catch (error) {
+                              console.error('Failed to refresh folders:', error);
+                            }
+                          };
+                          fetchFolders();
+                        }}
+                        className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                      >
+                        🔄 Refresh
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 mb-3">
+                          Available Folders ({availableFolders.length} found)
+                        </label>
+                        <select
+                          value={selectedFolder}
+                          onChange={(e) => setSelectedFolder(e.target.value)}
+                          className="w-full px-4 py-3 text-base border border-gray-200 rounded-lg bg-white text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-green-500"
+                          disabled={processing}
+                        >
+                          <option value="">
+                            {availableFolders.length === 0 ? 'No folders found...' : 'Select a folder...'}
+                          </option>
+                          {availableFolders.map(folder => (
+                            <option key={folder.name} value={folder.name}>
+                              {folder.name} ({folder.pdfCount} PDFs)
+                            </option>
+                          ))}
+                        </select>
+
+                        {availableFolders.length === 0 && (
+                          <p className="text-xs text-gray-500 mt-2">
+                            💡 Generate some PDFs first, then refresh to see available folders
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 mb-3">Combined PDF Name</label>
+                        <input
+                          type="text"
+                          value={combinedPdfName}
+                          onChange={(e) => setCombinedPdfName(e.target.value)}
+                          placeholder="Enter filename (without .pdf)"
+                          className="w-full px-4 py-3 text-base border border-gray-200 rounded-lg bg-white text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-green-500"
+                          disabled={processing}
+                        />
+                      </div>
+                    </div>
+
+                    {selectedFolder && (
+                      <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                        <p className="text-sm text-blue-700">
+                          📁 Selected: <span className="font-medium">{selectedFolder}</span>
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Combine Button */}
+                  <div className="flex justify-center mb-6">
+                    <button
+                      onClick={handleCombinePDFs}
+                      disabled={processing || !selectedFolder || !combinedPdfName.trim()}
+                      className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:from-gray-400 disabled:to-gray-500 text-white px-8 py-4 rounded-xl font-semibold text-lg flex items-center shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 disabled:transform-none"
+                    >
+                      {processing ? (
+                        <>
+                          <Loader className="animate-spin mr-3" size={24} />
+                          Combining PDFs...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="mr-3" size={24} />
+                          Combine PDFs
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Progress Bar for Combine Mode */}
+                  {processing && (
+                    <div className="mb-6">
+                      <div className="bg-white rounded-lg p-4 border">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-sm font-medium text-gray-700">Combining Progress</span>
+                          <span className="text-sm text-gray-600">{Math.round(progress)}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-3">
+                          <div
+                            className="bg-green-600 h-3 rounded-full transition-all duration-300"
+                            style={{ width: `${progress}%` }}
+                          ></div>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
+
+              </>
+            )}
+
+            {/* Browse & Download Tab */}
+            {activeTab === 'browse' && (
+              <FileBrowser
+                onDownload={downloadWithProgress}
+                API_BASE={API_BASE}
+              />
+            )}
+
+            {/* Download Progress Modal */}
+            <DownloadProgress
+              isVisible={showDownloadProgress}
+              onClose={() => setShowDownloadProgress(false)}
+              filename={downloadInfo?.filename}
+              fileSize={downloadInfo?.size}
+              estimatedTime={downloadInfo?.estimatedTime}
+              onConfirm={() => {
+                setShowDownloadProgress(false);
+                if (downloadInfo?.filename) {
+                  downloadPDFFromServer(downloadInfo.filename);
+                }
+              }}
+              onCancel={() => {
+                setShowDownloadProgress(false);
+                setDownloadInfo(null);
+              }}
+            />
+
+            {(results.length > 0 || emailResults.length > 0) && activeTab === 'combine' && (
+              <div className="bg-gray-50 rounded-lg p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold">Processing Results</h3>
+                  <div className="text-sm text-gray-600">
+                    Success: {processedCount} | Failed: {failedCount}
+                  </div>
+                </div>
+
+                {/* Summary Stats */}
+                <div className="grid grid-cols-3 gap-4 mb-4">
+                  <div className="bg-green-50 p-3 rounded-lg text-center">
+                    <div className="text-2xl font-bold text-green-600">{processedCount}</div>
+                    <div className="text-sm text-green-700">Processed</div>
+                  </div>
+                  <div className="bg-red-50 p-3 rounded-lg text-center">
+                    <div className="text-2xl font-bold text-red-600">{failedCount}</div>
+                    <div className="text-sm text-red-700">Failed</div>
+                  </div>
+                  <div className="bg-blue-50 p-3 rounded-lg text-center">
+                    <div className="text-2xl font-bold text-blue-600">{data.length}</div>
+                    <div className="text-sm text-blue-700">Total</div>
+                  </div>
+                </div>
+
+                <h3 className="text-lg font-semibold mb-4">Detailed Results</h3>
+
+                {/* PDF Generation Results */}
+                {results.length > 0 && (
+                  <div className="mb-6">
+                    <h4 className="font-medium text-gray-700 mb-2">PDF Generation ({results.length})</h4>
+                    <div className="bg-white rounded border max-h-40 overflow-y-auto">
+                      {results.slice(-10).map((result, index) => (
+                        <div key={index} className="px-3 py-2 border-b last:border-b-0 flex justify-between items-center">
+                          <div className="flex-1">
+                            <span className="text-sm font-medium">{result.policyNo}</span>
+                            <span className="text-xs text-gray-500 ml-2">{result.name}</span>
+                          </div>
+                          <div className="flex items-center">
+                            {result.status === 'downloaded' && (
+                              <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Downloaded</span>
+                            )}
+                            {result.status === 'generated' && (
+                              <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Generated</span>
+                            )}
+                            {result.status === 'failed' && (
+                              <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">Failed</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {results.length > 10 && (
+                        <div className="px-3 py-2 text-xs text-gray-500 text-center">
+                          Showing last 10 of {results.length} results
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Email Results */}
+                {emailResults.length > 0 && (
+                  <div className="mb-6">
+                    <h4 className="font-medium text-gray-700 mb-2">Email Sending ({emailResults.length})</h4>
+                    <div className="bg-white rounded border max-h-40 overflow-y-auto">
+                      {emailResults.slice(-10).map((result, index) => (
+                        <div key={index} className="px-3 py-2 border-b last:border-b-0 flex justify-between items-center">
+                          <div className="flex-1">
+                            <span className="text-sm font-medium">{result.policyNo}</span>
+                            <span className="text-xs text-gray-500 ml-2">{result.email}</span>
+                          </div>
+                          <div className="flex items-center">
+                            {result.status === 'sent' && (
+                              <CheckCircle className="text-green-600 mr-1" size={16} />
+                            )}
+                            {result.status === 'failed' && (
+                              <AlertCircle className="text-red-600 mr-1" size={16} />
+                            )}
+                            <span className={`text-xs px-2 py-1 rounded ${result.status === 'sent'
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-red-100 text-red-800'
+                              }`}>
+                              {result.status === 'sent' ? 'Sent' : 'Failed'}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                      {emailResults.length > 10 && (
+                        <div className="px-3 py-2 text-xs text-gray-500 text-center">
+                          Showing last 10 of {emailResults.length} results
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
-        {showEmailConfig && (
-          <div className="bg-gray-50 rounded-lg p-6 mb-6">
-            <h2 className="text-xl font-semibold mb-4">EmailJS Configuration</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Service ID
-                </label>
-                <input
-                  type="text"
-                  value={emailConfig.serviceId}
-                  onChange={(e) => setEmailConfig(prev => ({ ...prev, serviceId: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="service_xxxxxxx"
-                />
+            {showEmailConfig && (
+              <div className="bg-gray-50 rounded-lg p-6 mb-6">
+                <h2 className="text-xl font-semibold mb-4">EmailJS Configuration</h2>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Service ID
+                    </label>
+                    <input
+                      type="text"
+                      value={emailConfig.serviceId}
+                      onChange={(e) => setEmailConfig(prev => ({ ...prev, serviceId: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="service_xxxxxxx"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Template ID
+                    </label>
+                    <input
+                      type="text"
+                      value={emailConfig.templateId}
+                      onChange={(e) => setEmailConfig(prev => ({ ...prev, templateId: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="template_xxxxxxx"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Public Key
+                    </label>
+                    <input
+                      type="text"
+                      value={emailConfig.publicKey}
+                      onChange={(e) => setEmailConfig(prev => ({ ...prev, publicKey: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Your public key"
+                    />
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Template ID
-                </label>
-                <input
-                  type="text"
-                  value={emailConfig.templateId}
-                  onChange={(e) => setEmailConfig(prev => ({ ...prev, templateId: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="template_xxxxxxx"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Public Key
-                </label>
-                <input
-                  type="text"
-                  value={emailConfig.publicKey}
-                  onChange={(e) => setEmailConfig(prev => ({ ...prev, publicKey: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Your public key"
-                />
-              </div>
-            </div>
-          </div>
-        )}
+            )}
           </>
         )}
       </div>

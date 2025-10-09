@@ -284,7 +284,7 @@ app.get('/api/pdf/:filename', (req, res) => {
       const exists = fs.existsSync(searchPath);
       console.error(`[DEBUG] ${index + 1}. ${exists ? '✓' : '✗'} ${searchPath}`);
     });
-    res.status(404).json({ 
+    res.status(404).json({
       error: 'File not found',
       filename: filename,
       searchedPaths: possiblePaths.length
@@ -648,6 +648,57 @@ app.get('/api/status', (req, res) => {
     timestamp: new Date().toISOString(),
     outputDir: path.resolve(outputDir)
   });
+});
+
+// API endpoint to get folder contents (for file browser)
+app.get('/api/folder-contents/:folder/:subfolder?', (req, res) => {
+  try {
+    const { folder, subfolder } = req.params;
+    let targetPath;
+
+    if (subfolder) {
+      targetPath = path.join('.', folder, subfolder);
+    } else {
+      targetPath = path.join('.', folder);
+    }
+
+    if (!fs.existsSync(targetPath)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Folder not found'
+      });
+    }
+
+    const files = fs.readdirSync(targetPath)
+      .filter(file => file.endsWith('.pdf'))
+      .map(file => {
+        const filePath = path.join(targetPath, file);
+        const stats = fs.statSync(filePath);
+        return {
+          filename: file,
+          path: `${folder}${subfolder ? '/' + subfolder : ''}/${file}`,
+          size: stats.size,
+          lastModified: stats.mtime,
+          location: subfolder || 'main'
+        };
+      });
+
+    res.json({
+      success: true,
+      folder: folder,
+      subfolder: subfolder || 'main',
+      files: files,
+      count: files.length
+    });
+
+  } catch (error) {
+    console.error('Error reading folder contents:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to read folder contents',
+      error: error.message
+    });
+  }
 });
 
 // API endpoint to get PDF file information (for download progress)
