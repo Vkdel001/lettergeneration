@@ -23,7 +23,7 @@ const AuthScreen = ({ onAuthenticated }) => {
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
       return 'http://localhost:3001';
     } else {
-      return `${window.location.protocol}//${window.location.hostname}/api`;
+      return `${window.location.protocol}//${window.location.hostname}`;
     }
   };
 

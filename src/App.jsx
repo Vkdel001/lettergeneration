@@ -13,7 +13,7 @@ import FileBrowser from './components/FileBrowser.jsx';
 // Dynamic API URL - works both locally and on VPS with HTTPS
 const API_BASE = window.location.hostname === 'localhost'
   ? 'http://localhost:3001'
-  : `${window.location.protocol}//${window.location.hostname}/api`;
+  : `${window.location.protocol}//${window.location.hostname}`;
 
 const PDFGenerator = () => {
   // Authentication state
