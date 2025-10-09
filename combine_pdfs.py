@@ -160,49 +160,107 @@ def combine_pdfs_pypdf2(pdf_files, output_path):
         traceback.print_exc()
         return False
 
+def get_unprotected_pdfs(folder_path):
+    """Get PDF files from unprotected subfolder only."""
+    unprotected_path = os.path.join(folder_path, 'unprotected')
+    
+    if not os.path.exists(unprotected_path):
+        print(f"Warning: Unprotected folder not found at {unprotected_path}")
+        # Fallback to main folder for legacy structure
+        if os.path.exists(folder_path):
+            pdf_files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) 
+                        if f.endswith('.pdf')]
+            print(f"Using legacy structure: found {len(pdf_files)} PDFs in main folder")
+            return pdf_files
+        return []
+    
+    pdf_files = [os.path.join(unprotected_path, f) for f in os.listdir(unprotected_path) 
+                if f.endswith('.pdf')]
+    print(f"Found {len(pdf_files)} unprotected PDFs to combine")
+    print("Note: Protected PDFs are excluded (each has unique password)")
+    return pdf_files
+
+def create_combined_folder(base_folder):
+    """Create combined subfolder if it doesn't exist."""
+    combined_path = os.path.join(base_folder, 'combined')
+    if not os.path.exists(combined_path):
+        os.makedirs(combined_path)
+        print(f"Created combined folder: {combined_path}")
+    return combined_path
+
 def main():
-    parser = argparse.ArgumentParser(description='Combine PDF files')
-    parser.add_argument('--files', help='JSON array of PDF file paths')
-    parser.add_argument('--files-from-file', help='Path to JSON file containing PDF file paths')
+    parser = argparse.ArgumentParser(description='Combine PDF files from unprotected folder')
+    parser.add_argument('--files', help='JSON array of PDF file paths (legacy)')
+    parser.add_argument('--files-from-file', help='Path to JSON file containing PDF file paths (legacy)')
+    parser.add_argument('--folder', help='Base folder containing unprotected/ subfolder')
     parser.add_argument('--output', required=True, help='Output PDF file path')
+    parser.add_argument('--name', help='Output filename (without extension)')
     
     args = parser.parse_args()
     
-    print(f"Combine PDFs started...")
-    print(f"Output path: {args.output}")
+    print(f"🔗 PDF Combiner Started")
+    print(f"========================")
     
     try:
-        # Parse the JSON array of file paths (from command line or file)
-        if args.files_from_file:
-            print(f"Reading file list from: {args.files_from_file}")
-            with open(args.files_from_file, 'r') as f:
-                pdf_files = json.load(f)
-            print(f"Parsed {len(pdf_files)} file paths from JSON file")
-        elif args.files:
-            pdf_files = json.loads(args.files)
-            print(f"Parsed {len(pdf_files)} file paths from command line JSON")
+        pdf_files = []
+        
+        # New folder-based approach (preferred)
+        if args.folder:
+            print(f"📁 Processing folder: {args.folder}")
+            pdf_files = get_unprotected_pdfs(args.folder)
+            
+            # Create combined folder and update output path
+            combined_folder = create_combined_folder(args.folder)
+            
+            if args.name:
+                output_filename = f"{args.name}.pdf"
+            else:
+                folder_name = os.path.basename(args.folder.rstrip('/'))
+                timestamp = __import__('datetime').datetime.now().strftime('%Y-%m-%d')
+                output_filename = f"{folder_name}_combined_{timestamp}.pdf"
+            
+            args.output = os.path.join(combined_folder, output_filename)
+            print(f"📄 Output file: {args.output}")
+            
+        # Legacy file list approach (backward compatibility)
         else:
-            print("Error: Either --files or --files-from-file must be provided", file=sys.stderr)
-            sys.exit(1)
+            print("⚠️  Using legacy file list mode")
+            if args.files_from_file:
+                print(f"Reading file list from: {args.files_from_file}")
+                with open(args.files_from_file, 'r') as f:
+                    pdf_files = json.load(f)
+                print(f"Parsed {len(pdf_files)} file paths from JSON file")
+            elif args.files:
+                pdf_files = json.loads(args.files)
+                print(f"Parsed {len(pdf_files)} file paths from command line JSON")
+            else:
+                print("Error: Either --folder, --files, or --files-from-file must be provided", file=sys.stderr)
+                sys.exit(1)
         
         if not pdf_files:
-            print("Error: No PDF files provided", file=sys.stderr)
+            print("❌ Error: No PDF files found to combine", file=sys.stderr)
             sys.exit(1)
         
         # Validate that files exist
         existing_files = []
+        missing_count = 0
         for pdf_file in pdf_files:
             if os.path.exists(pdf_file):
                 existing_files.append(pdf_file)
-                print(f"✓ Found: {pdf_file}")
+                print(f"✓ Found: {os.path.basename(pdf_file)}")
             else:
                 print(f"✗ Missing: {pdf_file}")
+                missing_count += 1
         
         if not existing_files:
-            print("Error: No valid PDF files found", file=sys.stderr)
+            print("❌ Error: No valid PDF files found", file=sys.stderr)
             sys.exit(1)
         
-        print(f"Processing {len(existing_files)} valid PDF files...")
+        if missing_count > 0:
+            print(f"⚠️  Warning: {missing_count} files were missing and will be skipped")
+        
+        print(f"📊 Processing {len(existing_files)} valid PDF files...")
+        print(f"🎯 Using {PDF_LIBRARY.upper()} library for combining")
         
         # Use PyMuPDF if available (better for QR codes), otherwise PyPDF2
         if PDF_LIBRARY == "pymupdf":
@@ -212,6 +270,14 @@ def main():
         
         if success:
             print("✅ PDF combination completed successfully!")
+            print(f"📁 Combined file saved to: {args.output}")
+            
+            # Show file info
+            if os.path.exists(args.output):
+                file_size = os.path.getsize(args.output)
+                size_mb = file_size / (1024 * 1024)
+                print(f"📊 File size: {size_mb:.1f} MB ({file_size:,} bytes)")
+            
             sys.exit(0)
         else:
             print("❌ PDF combination failed!", file=sys.stderr)

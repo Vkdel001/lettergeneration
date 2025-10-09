@@ -13,10 +13,10 @@ const API_BASE = window.location.hostname === 'localhost'
   : `http://${window.location.hostname}:3001`;
 
 const PDFGenerator = () => {
-  // Authentication state
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authToken, setAuthToken] = useState(null);
-  const [userEmail, setUserEmail] = useState('');
+  // Authentication state (temporarily disabled for local testing)
+  const [isAuthenticated, setIsAuthenticated] = useState(true); // TEMP: Skip auth for testing
+  const [authToken, setAuthToken] = useState('test-token');
+  const [userEmail, setUserEmail] = useState('test@local.dev');
 
   // Existing state
   const [file, setFile] = useState(null);
@@ -52,7 +52,8 @@ const PDFGenerator = () => {
   });
   const [showEmailConfig, setShowEmailConfig] = useState(false);
 
-  // Check for existing authentication on component mount
+  // Check for existing authentication on component mount (DISABLED FOR TESTING)
+  /*
   useEffect(() => {
     const checkExistingAuth = () => {
       const token = sessionStorage.getItem('authToken');
@@ -81,6 +82,7 @@ const PDFGenerator = () => {
     
     checkExistingAuth();
   }, []);
+  */
 
   // Initialize EmailJS
   useEffect(() => {
@@ -127,9 +129,7 @@ const PDFGenerator = () => {
       console.log('[DEBUG] Starting template fetch, setting loading to true');
       setTemplatesLoading(true);
       try {
-        const response = await fetch(`${API_BASE}/api/templates`, {
-          headers: getAuthHeaders()
-        });
+        const response = await fetch(`${API_BASE}/api/templates`);
         const data = await response.json();
         console.log('[DEBUG] Server response for templates:', data);
         if (data.success) {
@@ -160,9 +160,7 @@ const PDFGenerator = () => {
     const fetchFolders = async () => {
       try {
         console.log('[DEBUG] Fetching folders...');
-        const response = await fetch(`${API_BASE}/api/folders`, {
-          headers: getAuthHeaders()
-        });
+        const response = await fetch(`${API_BASE}/api/folders`);
         const data = await response.json();
         console.log('[DEBUG] Folders response:', data);
         if (data.success) {
@@ -909,9 +907,6 @@ NIC Team
       // Server is configured with 6-hour timeout to match Python script timeout
       const response = await fetch(`${API_BASE}/api/generate-pdfs`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${authToken}`
-        },
         body: formData
       });
 
@@ -944,11 +939,7 @@ NIC Team
   // Download PDF from server
   const downloadPDFFromServer = async (filename) => {
     try {
-      const response = await fetch(`${API_BASE}/api/pdf/${filename}`, {
-        headers: {
-          'Authorization': `Bearer ${authToken}`
-        }
-      });
+      const response = await fetch(`${API_BASE}/api/pdf/${filename}`);
       if (!response.ok) throw new Error('Failed to download PDF');
 
       const blob = await response.blob();

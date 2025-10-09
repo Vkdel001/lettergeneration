@@ -516,130 +516,105 @@ app.post('/api/combine-pdfs', (req, res) => {
     console.log(`[DEBUG] Folder path: ${folderPath}`);
     console.log(`[DEBUG] Output filename: ${outputFileName}`);
 
-    // Only combine unprotected PDFs (since protected ones are identical but password-protected)
-    let pdfFiles = [];
-    let outputPath;
+    // Use new folder-based approach with combined/ subfolder
+    console.log(`[DEBUG] Using new folder-based PDF combining approach`);
 
-    // Check for unprotected subfolder first (new dual structure)
-    const unprotectedPath = path.join(folderPath, 'unprotected');
-    console.log(`[DEBUG] Checking unprotected path: ${unprotectedPath}`);
-
-    if (fs.existsSync(unprotectedPath) && fs.statSync(unprotectedPath).isDirectory()) {
-      console.log(`[DEBUG] Unprotected folder exists, scanning for PDFs...`);
-      const unprotectedPdfs = fs.readdirSync(unprotectedPath)
-        .filter(file => file.endsWith('.pdf'))
-        .map(file => path.join(unprotectedPath, file));
-      pdfFiles = unprotectedPdfs;
-      outputPath = path.resolve(unprotectedPath, outputFileName);
-      console.log(`[DEBUG] Found ${unprotectedPdfs.length} unprotected PDFs to combine`);
-      console.log(`[DEBUG] PDF files: ${unprotectedPdfs.slice(0, 3).join(', ')}${unprotectedPdfs.length > 3 ? '...' : ''}`);
-    } else {
-      console.log(`[DEBUG] No unprotected folder, checking main folder...`);
-      // Fallback to main folder (legacy structure)
-      const directPdfs = fs.readdirSync(folderPath)
-        .filter(file => file.endsWith('.pdf'))
-        .map(file => path.join(folderPath, file));
-      pdfFiles = directPdfs;
-      outputPath = path.resolve(folderPath, outputFileName);
-      console.log(`[DEBUG] Found ${directPdfs.length} PDFs in main folder (legacy structure)`);
+    // Create combined folder if it doesn't exist
+    const combinedPath = path.join(folderPath, 'combined');
+    if (!fs.existsSync(combinedPath)) {
+      fs.mkdirSync(combinedPath, { recursive: true });
+      console.log(`[DEBUG] Created combined folder: ${combinedPath}`);
     }
 
-    if (pdfFiles.length === 0) {
+    // Set output path in combined folder
+    const outputPath = path.join(combinedPath, outputFileName);
+    console.log(`[DEBUG] Output will be saved to: ${outputPath}`);
+
+    // Check if unprotected folder exists
+    const unprotectedPath = path.join(folderPath, 'unprotected');
+    if (!fs.existsSync(unprotectedPath)) {
       return res.status(400).json({
         success: false,
-        message: 'No PDF files found in the selected folder'
+        message: 'No unprotected folder found. Only unprotected PDFs can be combined (protected PDFs have individual passwords).'
       });
     }
 
-    console.log(`[DEBUG] Combining PDFs and saving to: ${outputPath}`);
+    const unprotectedPdfs = fs.readdirSync(unprotectedPath)
+      .filter(file => file.endsWith('.pdf'));
 
-    // Use dedicated Python script to combine PDFs
-    console.log(`[DEBUG] Combining ${pdfFiles.length} PDFs from ${folderName}`);
+    if (unprotectedPdfs.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No PDF files found in unprotected folder'
+      });
+    }
+
+    console.log(`[DEBUG] Found ${unprotectedPdfs.length} unprotected PDFs to combine`);
+    console.log(`[DEBUG] Note: Protected PDFs excluded (each has unique password)`);
+
+    // Use new folder-based Python script approach
+    console.log(`[DEBUG] Combining ${unprotectedPdfs.length} PDFs from ${folderName}`);
     console.log(`[DEBUG] Output file: ${outputPath}`);
 
-    // Create temporary file for JSON data to avoid command line escaping issues
-    const tempJsonFile = path.resolve('.', `temp_combine_${Date.now()}.json`);
+    const pythonArgs = [
+      'combine_pdfs.py',
+      '--folder', folderPath,
+      '--name', outputName,
+      '--output', outputPath
+    ];
 
-    try {
-      fs.writeFileSync(tempJsonFile, JSON.stringify(pdfFiles));
-      console.log(`[DEBUG] Created temp JSON file: ${tempJsonFile}`);
+    console.log(`[DEBUG] Python command: python ${pythonArgs.join(' ')}`);
+    console.log(`[DEBUG] Using folder-based approach (no temp JSON file needed)`);
 
-      const pythonArgs = [
-        'combine_pdfs.py',
-        '--files-from-file', tempJsonFile,
-        '--output', outputPath
-      ];
+    const python = spawn('python', pythonArgs, {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
 
-      console.log(`[DEBUG] Python command: python ${pythonArgs.join(' ')}`);
-      console.log(`[DEBUG] Files JSON written to temp file: ${pdfFiles.length} files`);
+    let stdout = '';
+    let stderr = '';
 
-      const python = spawn('python', pythonArgs, {
-        encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
+    python.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
 
-      let stdout = '';
-      let stderr = '';
+    python.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
 
-      python.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
+    python.on('close', (code) => {
+      console.log(`[DEBUG] Python script finished with code: ${code}`);
+      console.log(`[DEBUG] Python stdout: ${stdout}`);
+      if (stderr) console.log(`[DEBUG] Python stderr: ${stderr}`);
 
-      python.stderr.on('data', (data) => {
-        stderr += data.toString();
-      });
-
-      python.on('close', (code) => {
-        // Clean up temp file
-        try {
-          if (fs.existsSync(tempJsonFile)) {
-            fs.unlinkSync(tempJsonFile);
-            console.log(`[DEBUG] Cleaned up temp file: ${tempJsonFile}`);
-          }
-        } catch (cleanupError) {
-          console.warn(`[WARNING] Could not clean up temp file: ${cleanupError.message}`);
-        }
-
-        console.log(`[DEBUG] Python script finished with code: ${code}`);
-        console.log(`[DEBUG] Python stdout: ${stdout}`);
-        if (stderr) console.log(`[DEBUG] Python stderr: ${stderr}`);
-
-        if (code === 0 && fs.existsSync(outputPath)) {
-          res.json({
-            success: true,
-            message: `Combined ${pdfFiles.length} PDFs successfully`,
-            filename: outputFileName,
-            folderPath: folderName,
-            fullPath: outputPath,
-            pdfCount: pdfFiles.length
-          });
-        } else {
-          res.status(500).json({
-            success: false,
-            message: 'Failed to combine PDFs',
-            error: stderr || 'Unknown error occurred',
-            stdout: stdout
-          });
-        }
-      });
-
-      python.on('error', (error) => {
-        console.error('[ERROR] Failed to start Python process:', error);
+      if (code === 0 && fs.existsSync(outputPath)) {
+        res.json({
+          success: true,
+          message: `Combined ${unprotectedPdfs.length} unprotected PDFs successfully`,
+          filename: outputFileName,
+          folderPath: `${folderName}/combined`,
+          fullPath: outputPath,
+          pdfCount: unprotectedPdfs.length,
+          note: 'Protected PDFs excluded (each has unique password)'
+        });
+      } else {
         res.status(500).json({
           success: false,
-          message: 'Failed to start PDF combination process',
-          error: error.message
+          message: 'Failed to combine PDFs',
+          error: stderr || 'Unknown error occurred',
+          stdout: stdout
         });
-      });
+      }
+    });
 
-    } catch (fileError) {
-      console.error(`[ERROR] Could not create temp JSON file: ${fileError.message}`);
-      return res.status(500).json({
+    python.on('error', (error) => {
+      console.error('[ERROR] Failed to start Python process:', error);
+      res.status(500).json({
         success: false,
-        message: 'Failed to prepare file list for PDF combination',
-        error: fileError.message
+        message: 'Failed to start PDF combination process',
+        error: error.message
       });
-    }
+    });
 
   } catch (error) {
     console.error('[ERROR] Exception in combine PDFs endpoint:', error);
@@ -658,6 +633,80 @@ app.use(express.static(path.join(__dirname, 'dist')));
 
 // Authentication endpoints removed temporarily to fix startup issues
 // TODO: Re-enable authentication after PDF generation is working
+
+// API endpoint to check server status
+app.get('/api/status', (req, res) => {
+  res.json({
+    status: 'running',
+    timestamp: new Date().toISOString(),
+    outputDir: path.resolve(outputDir)
+  });
+});
+
+// API endpoint to get PDF file information (for download progress)
+app.get('/api/pdf-info/:filename', (req, res) => {
+  const filename = req.params.filename;
+
+  // Search for the file in multiple possible locations
+  const possiblePaths = [
+    path.join(outputDir, filename),
+    path.join('.', filename),
+  ];
+
+  // Add dynamic folder paths
+  try {
+    const currentDir = fs.readdirSync('.');
+    const outputFolders = currentDir.filter(item => {
+      return fs.statSync(item).isDirectory() &&
+        (item.startsWith('output_') || item.startsWith('default_'));
+    });
+
+    outputFolders.forEach(folder => {
+      possiblePaths.push(path.join('.', folder, filename));
+      possiblePaths.push(path.join('.', folder, 'protected', filename));
+      possiblePaths.push(path.join('.', folder, 'unprotected', filename));
+      possiblePaths.push(path.join('.', folder, 'combined', filename)); // NEW: Check combined folder
+    });
+  } catch (error) {
+    console.error('Error scanning for output folders:', error);
+  }
+
+  // Try each possible path
+  let foundPath = null;
+  for (const filePath of possiblePaths) {
+    if (fs.existsSync(filePath)) {
+      foundPath = filePath;
+      break;
+    }
+  }
+
+  if (foundPath) {
+    const stats = fs.statSync(foundPath);
+    const sizeInMB = (stats.size / (1024 * 1024)).toFixed(1);
+
+    // Estimate download time based on file size (rough estimate)
+    const estimatedSeconds = Math.ceil(stats.size / (1024 * 1024)); // 1MB per second estimate
+    const estimatedTime = estimatedSeconds > 60
+      ? `${Math.ceil(estimatedSeconds / 60)} minutes`
+      : `${estimatedSeconds} seconds`;
+
+    res.json({
+      success: true,
+      filename: filename,
+      size: stats.size,
+      sizeFormatted: `${sizeInMB} MB`,
+      estimatedDownloadTime: estimatedTime,
+      path: foundPath,
+      lastModified: stats.mtime
+    });
+  } else {
+    res.status(404).json({
+      success: false,
+      message: 'File not found',
+      filename: filename
+    });
+  }
+});
 
 // API endpoint to check server status
 app.get('/api/status', (req, res) => {
