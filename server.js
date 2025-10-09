@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import cors from 'cors';
 import { fileURLToPath } from 'url';
-// import AuthService from './auth_service.js'; // Temporarily disabled
+import AuthService from './auth_service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -204,10 +204,25 @@ app.post('/api/generate-pdfs', upload.single('excelFile'), (req, res) => {
         }
       }
 
+      // Calculate records processed (unique records, not total files)
+      const protectedCount = pdfFiles.filter(f => f.location === 'protected').length;
+      const unprotectedCount = pdfFiles.filter(f => f.location === 'unprotected').length;
+      const mainCount = pdfFiles.filter(f => f.location === 'main').length;
+      
+      // Records processed = max of protected/unprotected (since each record generates both)
+      const recordsProcessed = Math.max(protectedCount, unprotectedCount, mainCount);
+      
       res.json({
         success: true,
-        message: `Generated ${pdfFiles.length} PDFs successfully`,
+        message: `Processed ${recordsProcessed} records successfully (${pdfFiles.length} files generated)`,
         files: pdfFiles,
+        recordsProcessed: recordsProcessed,
+        filesGenerated: pdfFiles.length,
+        breakdown: {
+          protected: protectedCount,
+          unprotected: unprotectedCount,
+          main: mainCount
+        },
         stdout,
         stderr
       });
@@ -648,6 +663,94 @@ app.get('/api/status', (req, res) => {
     timestamp: new Date().toISOString(),
     outputDir: path.resolve(outputDir)
   });
+});
+
+// Authentication API endpoints
+app.post('/api/auth/send-otp', (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+
+    AuthService.sendOTP(email).then(result => {
+      if (result.success) {
+        res.json(result);
+      } else {
+        res.status(400).json(result);
+      }
+    }).catch(error => {
+      console.error('[AUTH] Error sending OTP:', error);
+      res.status(500).json({
+        success: false,
+        message: 'System error. Please try again later.'
+      });
+    });
+  } catch (error) {
+    console.error('[AUTH] Error in send-otp endpoint:', error);
+    res.status(500).json({
+      success: false,
+      message: 'System error. Please try again later.'
+    });
+  }
+});
+
+app.post('/api/auth/verify-otp', (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    
+    if (!email || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and OTP are required'
+      });
+    }
+
+    const result = AuthService.verifyOTP(email, otp);
+    
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    console.error('[AUTH] Error in verify-otp endpoint:', error);
+    res.status(500).json({
+      success: false,
+      message: 'System error. Please try again later.'
+    });
+  }
+});
+
+app.post('/api/auth/password-login', (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required'
+      });
+    }
+
+    const result = AuthService.passwordAuth(email, password);
+    
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    console.error('[AUTH] Error in password-login endpoint:', error);
+    res.status(500).json({
+      success: false,
+      message: 'System error. Please try again later.'
+    });
+  }
 });
 
 // API endpoint to get folder contents (for file browser)

@@ -16,10 +16,10 @@ const API_BASE = window.location.hostname === 'localhost'
   : `http://${window.location.hostname}:3001`;
 
 const PDFGenerator = () => {
-  // Authentication state (temporarily disabled for local testing)
-  const [isAuthenticated, setIsAuthenticated] = useState(true); // TEMP: Skip auth for testing
-  const [authToken, setAuthToken] = useState('test-token');
-  const [userEmail, setUserEmail] = useState('test@local.dev');
+  // Authentication state
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authToken, setAuthToken] = useState('');
+  const [userEmail, setUserEmail] = useState('');
 
   // Existing state
   const [file, setFile] = useState(null);
@@ -28,8 +28,10 @@ const PDFGenerator = () => {
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState([]);
   const [error, setError] = useState('');
-  const [autoDownload, setAutoDownload] = useState(true);
+  const [autoDownload, setAutoDownload] = useState(false);
   const [sendEmails, setSendEmails] = useState(false);
+  const [showEmailConfirmation, setShowEmailConfirmation] = useState(false);
+  const [emailConfirmationText, setEmailConfirmationText] = useState('');
   const [emailProgress, setEmailProgress] = useState(0);
   const [emailResults, setEmailResults] = useState([]);
   const [batchSize, setBatchSize] = useState(10);
@@ -60,8 +62,7 @@ const PDFGenerator = () => {
   const [showDownloadProgress, setShowDownloadProgress] = useState(false);
   const [downloadInfo, setDownloadInfo] = useState(null);
 
-  // Check for existing authentication on component mount (DISABLED FOR TESTING)
-  /*
+  // Check for existing authentication on component mount
   useEffect(() => {
     const checkExistingAuth = () => {
       const token = sessionStorage.getItem('authToken');
@@ -90,7 +91,6 @@ const PDFGenerator = () => {
     
     checkExistingAuth();
   }, []);
-  */
 
   // Initialize EmailJS
   useEffect(() => {
@@ -932,7 +932,12 @@ NIC Team
       setPythonProgress(100);
       setGeneratedPdfPaths(result.files);
 
-      return result.files;
+      // Return both files and record count
+      return {
+        files: result.files,
+        recordsProcessed: result.recordsProcessed || result.files.length,
+        filesGenerated: result.filesGenerated || result.files.length
+      };
     } catch (error) {
       console.error('Python PDF generation error:', error);
       console.error('Error details:', {
@@ -1219,14 +1224,17 @@ NIC Team
         });
       }, 1000);
 
-      const generatedFiles = await generatePDFsWithPython();
+      const generationResult = await generatePDFsWithPython();
       clearInterval(progressInterval);
       setProgress(95);
 
-      // Update processed count with actual generated files
-      setProcessedCount(generatedFiles.length);
+      const generatedFiles = generationResult.files;
+      const recordsProcessed = generationResult.recordsProcessed;
 
-      console.log(`Python generated ${generatedFiles.length} PDFs`);
+      // Update processed count with actual records processed (not total files)
+      setProcessedCount(recordsProcessed);
+
+      console.log(`Python processed ${recordsProcessed} records (${generatedFiles.length} files generated)`);
 
       if (sendEmails) {
         // Process emails via Brevo
@@ -1331,13 +1339,16 @@ NIC Team
         }
 
       } else if (autoDownload) {
-        // Auto-download all generated PDFs
-        console.log('Starting auto-download...');
-        for (let i = 0; i < generatedFiles.length; i++) {
+        // Auto-download only unprotected PDFs
+        console.log('Starting auto-download (unprotected files only)...');
+        const unprotectedFiles = generatedFiles.filter(file => !file.isProtected);
+        console.log(`Downloading ${unprotectedFiles.length} unprotected files out of ${generatedFiles.length} total files`);
+        
+        for (let i = 0; i < unprotectedFiles.length; i++) {
           try {
-            await downloadPDFFromServer(generatedFiles[i].filename);
+            await downloadPDFFromServer(unprotectedFiles[i].filename);
             setProcessedCount(prev => prev + 1);
-            setProgress(30 + ((i + 1) / generatedFiles.length) * 70);
+            setProgress(30 + ((i + 1) / unprotectedFiles.length) * 70);
 
             // Small delay between downloads
             await new Promise(resolve => setTimeout(resolve, 300));
@@ -1346,16 +1357,24 @@ NIC Team
             setFailedCount(prev => prev + 1);
           }
         }
+        
+        if (generatedFiles.length > unprotectedFiles.length) {
+          const protectedCount = generatedFiles.length - unprotectedFiles.length;
+          console.log(`${protectedCount} protected files were not auto-downloaded`);
+        }
       }
 
       // Update results
-      const pdfResults = generatedFiles.map((file, index) => ({
-        policyNo: data[index]?.['Policy No'] || `policy_${index}`,
-        name: `${data[index]?.['Owner 1 Title'] || ''} ${data[index]?.['Owner 1 First Name'] || ''} ${data[index]?.['Owner 1 Surname'] || ''}`.trim() || 'Unknown',
-        filename: file.filename,
-        size: file.size,
+      // Create results based on records processed, not total files
+      const pdfResults = data.slice(0, recordsProcessed).map((record, index) => ({
+        policyNo: record['Policy No'] || `policy_${index}`,
+        name: `${record['Owner 1 Title'] || ''} ${record['Owner 1 First Name'] || ''} ${record['Owner 1 Surname'] || ''}`.trim() || 'Unknown',
+        filename: `Record ${index + 1}`, // Generic filename since each record has multiple files
+        size: 0, // We'll calculate this if needed
         status: 'generated',
-        type: 'python_pdf'
+        type: 'python_pdf',
+        recordIndex: index,
+        filesGenerated: generatedFiles.filter(f => f.filename.includes(record['Policy No'] || `policy_${index}`)).length
       }));
 
       setResults(pdfResults);
@@ -1533,13 +1552,12 @@ NIC Team
 
                 {/* Step 2: Generate PDFs */}
                 {data.length > 0 && (
-                  <div className={`bg-white rounded-xl shadow-sm border p-8 mb-8 ${results.length === 0 && data.length > 0 ? 'border-green-300 bg-green-50' : 'border-gray-200'}`}>
+                  <div className="bg-white rounded-xl shadow-sm border border-green-300 bg-green-50 p-8 mb-8">
                     <div className="flex items-center mb-6">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold mr-3 ${results.length === 0 ? 'bg-green-600 text-white' : 'bg-green-600 text-white'}`}>
-                        {results.length === 0 ? '2' : '✓'}
+                      <div className="w-8 h-8 bg-green-600 text-white rounded-full flex items-center justify-center font-bold mr-3">
+                        2
                       </div>
                       <h2 className="text-2xl font-bold text-gray-800">Generate PDFs</h2>
-                      {results.length > 0 && <span className="ml-3 text-sm text-green-600 font-medium">✓ Completed</span>}
                     </div>
 
                     {/* Two-Column Layout */}
@@ -1635,8 +1653,12 @@ NIC Team
                               type="checkbox"
                               checked={sendEmails}
                               onChange={(e) => {
-                                setSendEmails(e.target.checked);
-                                if (e.target.checked) setAutoDownload(false);
+                                if (e.target.checked) {
+                                  setShowEmailConfirmation(true);
+                                  setAutoDownload(false);
+                                } else {
+                                  setSendEmails(false);
+                                }
                               }}
                               className="mr-3 w-4 h-4 text-green-600"
                             />
@@ -1657,16 +1679,30 @@ NIC Team
                         {processing ? (
                           <>
                             <Loader className="animate-spin mr-3" size={24} />
-                            Generating PDFs...
+                            {sendEmails ? 'Generating & Emailing...' : 'Generating PDFs...'}
                           </>
                         ) : (
                           <>
-                            <FileText className="mr-3" size={24} />
-                            Generate {data.length} PDFs
+                            {sendEmails ? <Mail className="mr-3" size={24} /> : <FileText className="mr-3" size={24} />}
+                            {sendEmails ? 'Generate & Email' : 'Generate PDFs'} ({data.length})
                           </>
                         )}
                       </button>
                     </div>
+
+                    {/* Download All Button - Show when results exist and not processing */}
+                    {results.length > 0 && !processing && !sendEmails && (
+                      <div className="flex justify-center mb-6">
+                        <button
+                          onClick={downloadAllPDFs}
+                          className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white px-8 py-4 rounded-xl font-semibold text-lg flex items-center shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                          aria-label="Download all generated PDFs"
+                        >
+                          <Download className="mr-3" size={24} />
+                          Download All ({results.length})
+                        </button>
+                      </div>
+                    )}
 
                     {/* Progress Bar */}
                     {processing && (
@@ -1693,88 +1729,11 @@ NIC Team
 
 
 
-                    <div className="flex gap-6 mb-8">
-                      <button
-                        onClick={handleGeneratePDFs}
-                        disabled={processing}
-                        className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-400 disabled:to-gray-500 text-white px-8 py-4 rounded-xl font-semibold text-lg flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 disabled:transform-none"
-                        aria-label={sendEmails ? 'Generate and email PDFs' : 'Generate all PDFs'}
-                      >
-                        {processing ? (
-                          <>
-                            <Loader className="animate-spin mr-3" size={24} />
-                            Processing...
-                          </>
-                        ) : (
-                          <>
-                            {sendEmails ? <Mail className="mr-3" size={24} /> : <FileText className="mr-3" size={24} />}
-                            {sendEmails ? 'Generate & Email' : 'Generate All PDFs'} ({data.length})
-                          </>
-                        )}
-                      </button>
+                    <div className="flex justify-center mb-8">
 
-                      {results.length > 0 && !processing && !sendEmails && (
-                        <button
-                          onClick={downloadAllPDFs}
-                          className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white px-8 py-4 rounded-xl font-semibold text-lg flex items-center shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
-                          aria-label="Download all generated PDFs"
-                        >
-                          <Download className="mr-3" size={24} />
-                          Download All
-                        </button>
-                      )}
                     </div>
 
-                    {processing && (
-                      <div className="mb-4">
-                        <div className="bg-white rounded-lg p-4 border">
-                          <div className="flex justify-between items-center mb-2">
-                            <span className="text-sm font-medium text-gray-700">Overall Progress</span>
-                            <span className="text-sm text-gray-600">{Math.round(progress)}%</span>
-                          </div>
-                          <div className="bg-gray-200 rounded-full h-3 mb-3">
-                            <div
-                              className="bg-blue-600 h-3 rounded-full transition-all duration-300"
-                              style={{ width: `${progress}%` }}
-                            ></div>
-                          </div>
 
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                              <div className="text-gray-600">Batch Progress</div>
-                              <div className="font-medium">{currentBatch} / {totalBatches}</div>
-                            </div>
-                            <div>
-                              <div className="text-gray-600">Items Processed</div>
-                              <div className="font-medium">{processedCount} / {data.length}</div>
-                            </div>
-                          </div>
-
-                          {failedCount > 0 && (
-                            <div className="mt-2 text-sm">
-                              <span className="text-red-600">Failed: {failedCount}</span>
-                            </div>
-                          )}
-
-                          <div className="mt-3">
-                            <div className="flex justify-between items-center mb-1">
-                              <span className="text-xs text-gray-600">Python PDF Generation</span>
-                              <span className="text-xs text-gray-600">{Math.round(pythonProgress)}%</span>
-                            </div>
-                            <div className="bg-gray-200 rounded-full h-2">
-                              <div
-                                className="bg-purple-600 h-2 rounded-full transition-all duration-300"
-                                style={{ width: `${pythonProgress}%` }}
-                              ></div>
-                            </div>
-                          </div>
-
-                          <div className="mt-2 text-xs text-gray-500">
-                            Using ${selectedTemplate.replace('.py', '')} template
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -1941,7 +1900,7 @@ NIC Team
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-semibold">Processing Results</h3>
                   <div className="text-sm text-gray-600">
-                    Success: {processedCount} | Failed: {failedCount}
+                    Records: {processedCount} Processed | {failedCount} Failed
                   </div>
                 </div>
 
@@ -1949,7 +1908,7 @@ NIC Team
                 <div className="grid grid-cols-3 gap-4 mb-4">
                   <div className="bg-green-50 p-3 rounded-lg text-center">
                     <div className="text-2xl font-bold text-green-600">{processedCount}</div>
-                    <div className="text-sm text-green-700">Processed</div>
+                    <div className="text-sm text-green-700">Records Processed</div>
                   </div>
                   <div className="bg-red-50 p-3 rounded-lg text-center">
                     <div className="text-2xl font-bold text-red-600">{failedCount}</div>
@@ -1957,7 +1916,7 @@ NIC Team
                   </div>
                   <div className="bg-blue-50 p-3 rounded-lg text-center">
                     <div className="text-2xl font-bold text-blue-600">{data.length}</div>
-                    <div className="text-sm text-blue-700">Total</div>
+                    <div className="text-sm text-blue-700">Total Records</div>
                   </div>
                 </div>
 
@@ -2077,6 +2036,63 @@ NIC Team
               </div>
             )}
           </>
+        )}
+
+        {/* Email Confirmation Modal */}
+        {showEmailConfirmation && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full">
+              <div className="flex items-center mb-4">
+                <Mail className="text-red-600 mr-3" size={24} />
+                <h3 className="text-xl font-bold text-gray-800">Confirm Email Sending</h3>
+              </div>
+              
+              <div className="mb-6">
+                <p className="text-gray-600 mb-4">
+                  You are about to send emails to customers. This action cannot be undone.
+                </p>
+                <p className="text-sm text-red-600 mb-4">
+                  ⚠️ Please type the exact text below to confirm:
+                </p>
+                <p className="font-mono text-sm bg-gray-100 p-2 rounded mb-3">
+                  Send Emails to Customers
+                </p>
+                <input
+                  type="text"
+                  value={emailConfirmationText}
+                  onChange={(e) => setEmailConfirmationText(e.target.value)}
+                  placeholder="Type the confirmation text here..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                  autoFocus
+                />
+              </div>
+              
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => {
+                    if (emailConfirmationText === 'Send Emails to Customers') {
+                      setSendEmails(true);
+                      setShowEmailConfirmation(false);
+                      setEmailConfirmationText('');
+                    }
+                  }}
+                  disabled={emailConfirmationText !== 'Send Emails to Customers'}
+                  className="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                >
+                  Confirm & Enable Email
+                </button>
+                <button
+                  onClick={() => {
+                    setShowEmailConfirmation(false);
+                    setEmailConfirmationText('');
+                  }}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

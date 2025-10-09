@@ -196,8 +196,7 @@ const AuthScreen = ({ onAuthenticated }) => {
     <div className="auth-screen">
       <div className="auth-container">
         <div className="auth-header">
-          <img src="/nic-logo.png" alt="NIC Insurance" className="auth-logo" />
-          <h1>NIC PDF Generator</h1>
+          <h1>NIC Life - Arrears</h1>
           <p>Secure Access Required</p>
         </div>
 
@@ -338,7 +337,7 @@ const AuthScreen = ({ onAuthenticated }) => {
         )}
 
         <div className="auth-footer">
-          <p>© 2025 NIC Insurance - Secure PDF Generation System</p>
+          <p>NIC Life Arrears Management System</p>
         </div>
       </div>
     </div>
