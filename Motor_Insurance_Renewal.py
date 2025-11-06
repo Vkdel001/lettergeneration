@@ -73,6 +73,19 @@ def create_motor_renewal_pdf():
                     return default
                 return str(value).strip()
             
+            # Validate New Net Premium - skip record if non-numeric
+            new_net_premium_raw = safe_get('New Net Premium')
+            try:
+                # Try to convert to float to check if it's numeric
+                float(new_net_premium_raw.replace(',', ''))  # Remove commas for validation
+                is_numeric_premium = True
+            except (ValueError, AttributeError):
+                is_numeric_premium = False
+            
+            if not is_numeric_premium or not new_net_premium_raw.strip():
+                print(f"⚠️ Skipping record {index+1}: Non-numeric or empty 'New Net Premium' value: '{new_net_premium_raw}' for {safe_get('Title')} {safe_get('Firstname')} {safe_get('Surname')}")
+                continue
+            
             # Map Excel columns to policy data
             policy_data = {
                 'date': datetime.now().strftime('%d %B %Y'),  # System Date
@@ -85,9 +98,7 @@ def create_motor_renewal_pdf():
                 'address3': safe_get('Address2 after Rating Category'),
                 'designation': f"{safe_get('Title')} {safe_get('Firstname')} {safe_get('Surname')}".strip(),
                 'policy_no': safe_get('Policy No'),
-                'expiry_date': safe_get('Expiry Date'),
-                'renewal_start': safe_get('Renewal Start'),
-                'renewal_end': safe_get('Renewal End'),
+                'cover_end_dt': safe_get('Cover End Dt'),
                 'make': safe_get('Make'),
                 'model': safe_get('Model'),
                 'vehicle_no': safe_get('Vehicle No'),
@@ -95,20 +106,111 @@ def create_motor_renewal_pdf():
                 'compulsory_excess': safe_get('Compulsory Excess'),
                 'idv': safe_get('IDV'),
                 'revised_idv': safe_get('Revised IDV'),
-                'new_net_premium': safe_get('New Net Premium'),
+                'new_net_premium': new_net_premium_raw,
                 'nic': safe_get('NIC Number'),
                 'business_type': safe_get('Business Type'),
                 'old_policy_no': safe_get('Old Policy No')
             }
             
+            # Calculate renewal dates based on Cover End Dt
+            try:
+                # Parse Cover End Dt (assuming it's in a standard date format)
+                cover_end_str = policy_data['cover_end_dt']
+                if cover_end_str:
+                    # Try different date and datetime formats
+                    date_formats = [
+                        '%Y-%m-%d %H:%M:%S',  # 2025-12-03 23:59:00
+                        '%Y-%m-%d %H:%M',     # 2025-12-03 23:59
+                        '%Y-%m-%d',           # 2025-12-03
+                        '%d/%m/%Y %H:%M:%S',  # 03/12/2025 23:59:00
+                        '%d/%m/%Y %H:%M',     # 03/12/2025 23:59
+                        '%d/%m/%Y',           # 03/12/2025
+                        '%d-%m-%Y %H:%M:%S',  # 03-12-2025 23:59:00
+                        '%d-%m-%Y %H:%M',     # 03-12-2025 23:59
+                        '%d-%m-%Y',           # 03-12-2025
+                        '%d %B %Y',           # 03 December 2025
+                        '%d %b %Y'            # 03 Dec 2025
+                    ]
+                    
+                    cover_end_date = None
+                    for date_format in date_formats:
+                        try:
+                            cover_end_date = datetime.strptime(cover_end_str, date_format)
+                            break
+                        except ValueError:
+                            continue
+                    
+                    if cover_end_date is None:
+                        # If no format works, skip this record
+                        print(f"❌ Skipping record {index+1}: Could not parse Cover End Dt '{cover_end_str}' for {policy_data['name']}")
+                        continue
+                    
+                    # Calculate renewal start (next day after cover end)
+                    renewal_start_date = cover_end_date + timedelta(days=1)
+                    # Calculate renewal end (1 day less than 1 year from renewal start)
+                    renewal_end_date = renewal_start_date + timedelta(days=364)
+                    
+                    # Format dates for display
+                    policy_data['expiry_date'] = cover_end_date.strftime('%d %B %Y')
+                    policy_data['renewal_start'] = renewal_start_date.strftime('%d %B %Y')
+                    policy_data['renewal_end'] = renewal_end_date.strftime('%d %B %Y')
+                else:
+                    # Fallback if Cover End Dt is empty
+                    policy_data['expiry_date'] = safe_get('Expiry Date')
+                    policy_data['renewal_start'] = safe_get('Renewal Start')
+                    policy_data['renewal_end'] = safe_get('Renewal End')
+            except Exception as e:
+                print(f"⚠️ Error calculating renewal dates for {policy_data['name']}: {str(e)}")
+                # Fallback to original columns
+                policy_data['expiry_date'] = safe_get('Expiry Date')
+                policy_data['renewal_start'] = safe_get('Renewal Start')
+                policy_data['renewal_end'] = safe_get('Renewal End')
+            
             # Create vehicle description
             vehicle_desc = f"COMPREHENSIVE COVER\n{policy_data['make']} {policy_data['model']}\n{policy_data['vehicle_no']}\n{policy_data['chassis_no']}"
             policy_data['vehicle_desc'] = vehicle_desc
             
-            # Generate PDF filename in output_motor folder
-            safe_name = policy_data['name'].replace(' ', '_').replace('/', '_').replace('\\', '_')
+            # Generate PDF filename in output_motor folder with enhanced character cleaning
+            import re
+            # Clean name by removing/replacing problematic characters
+            safe_name = policy_data['name']
+            # Replace common problematic characters
+            safe_name = safe_name.replace('â€"', '-')  # Replace em dash
+            safe_name = safe_name.replace('–', '-')    # Replace en dash
+            safe_name = safe_name.replace('—', '-')    # Replace em dash
+            safe_name = safe_name.replace('"', '')     # Remove quotes
+            safe_name = safe_name.replace('"', '')     # Remove smart quotes left
+            safe_name = safe_name.replace('"', '')     # Remove smart quotes right
+            safe_name = safe_name.replace("'", '')     # Remove smart apostrophes
+            safe_name = safe_name.replace('`', '')     # Remove backticks
+            # Remove any remaining non-ASCII characters and replace with underscore
+            safe_name = re.sub(r'[^\x00-\x7F]+', '_', safe_name)
+            # Replace spaces and path separators
+            safe_name = safe_name.replace(' ', '_').replace('/', '_').replace('\\', '_')
+            # Remove multiple consecutive underscores
+            safe_name = re.sub(r'_+', '_', safe_name)
+            # Remove leading/trailing underscores
+            safe_name = safe_name.strip('_')
+            
+            # Truncate name if too long to prevent Windows path length issues
+            max_name_length = 100  # Leave room for prefix, policy number, and extension
+            if len(safe_name) > max_name_length:
+                safe_name = safe_name[:max_name_length]
+            
             safe_policy = policy_data['policy_no'].replace('/', '_').replace('\\', '_')
-            pdf_filename = os.path.join(output_dir, f"Motor_Renewal_{safe_name}_{safe_policy}.pdf")
+            
+            # Create filename and check total path length
+            base_filename = f"Motor_Renewal_{safe_name}_{safe_policy}.pdf"
+            pdf_filename = os.path.join(output_dir, base_filename)
+            
+            # If path is still too long, truncate further
+            if len(pdf_filename) > 250:  # Leave some buffer under 260 char limit
+                # Calculate how much to truncate
+                excess = len(pdf_filename) - 250
+                new_name_length = max(20, len(safe_name) - excess)  # Minimum 20 chars for name
+                safe_name = safe_name[:new_name_length]
+                base_filename = f"Motor_Renewal_{safe_name}_{safe_policy}.pdf"
+                pdf_filename = os.path.join(output_dir, base_filename)
             
             # Generate QR Code for payment using API
             try:
@@ -210,8 +312,15 @@ def create_motor_renewal_pdf():
             try:
                 password = "12345"  # Default password for all PDFs
                 
+                # Create unique temporary filename to avoid conflicts
+                import time
+                temp_filename = pdf_filename.replace('.pdf', f'_temp_{int(time.time() * 1000)}.pdf')
+                
+                # Ensure temp file doesn't exist
+                if os.path.exists(temp_filename):
+                    os.remove(temp_filename)
+                
                 # Create password-protected version
-                temp_filename = pdf_filename.replace('.pdf', '_temp.pdf')
                 os.rename(pdf_filename, temp_filename)
                 
                 # Read the unprotected PDF
@@ -231,14 +340,18 @@ def create_motor_renewal_pdf():
                         writer.write(output_file)
                 
                 # Remove temporary file
-                os.remove(temp_filename)
+                if os.path.exists(temp_filename):
+                    os.remove(temp_filename)
                 print(f"🔒 PDF {index+1}/{len(df)}: {os.path.basename(pdf_filename)} - Password protected (12345)")
             except Exception as e:
                 print(f"⚠️ Failed to add password protection for {pdf_filename}: {str(e)}")
                 # If password protection fails, ensure we still have the original PDF
-                temp_filename = pdf_filename.replace('.pdf', '_temp.pdf')
+                temp_filename = pdf_filename.replace('.pdf', f'_temp_{int(time.time() * 1000)}.pdf')
                 if os.path.exists(temp_filename):
-                    os.rename(temp_filename, pdf_filename)
+                    try:
+                        os.rename(temp_filename, pdf_filename)
+                    except:
+                        pass  # If rename fails, at least we tried
             
             # Clean up QR code file
             if qr_filename and os.path.exists(qr_filename):
@@ -254,7 +367,71 @@ def create_motor_renewal_pdf():
 
 def create_page2_kyc(c, data, qr_filename):
     """Create Page 2 - KYC Declaration"""
-    y_pos = height - margin - 50  # Start lower to match the format
+    y_pos = height - margin - 20  # Start higher to accommodate renewal confirmation
+    
+    # Add Renewal Confirmation section at the top of page 2
+    # Renewal confirmation section
+    c.setFillColor(colors.lightblue)
+    c.rect(margin, y_pos - 15, width - 2 * margin, 20, fill=1, stroke=1)
+    c.setFillColor(colors.black)
+    c.setFont("Cambria-Bold", 10)
+    c.drawString(margin + 5, y_pos - 10, "RENEWAL CONFIRMATION (Section to be filled in and signed by the Policyholder):")
+    y_pos -= 25
+    
+    # Confirmation table with proper layout
+    table_width = width - 2 * margin
+    col_widths = [280, 140, 100]
+    row_height = 20
+    
+    # Header row
+    c.setFillColor(colors.lightgrey)
+    x_pos = margin
+    headers = ["Renewal Instructions / Remarks", "Signature", "Date"]
+    
+    for i, header in enumerate(headers):
+        c.rect(x_pos, y_pos - row_height, col_widths[i], row_height, fill=1, stroke=1)
+        c.setFillColor(colors.black)
+        c.setFont("Cambria-Bold", 9)
+        c.drawString(x_pos + 5, y_pos - 15, header)
+        c.setFillColor(colors.lightgrey)
+        x_pos += col_widths[i]
+    
+    y_pos -= row_height
+    
+    # Data rows
+    c.setFillColor(colors.white)
+    
+    # Row 1: Renew as invited
+    x_pos = margin
+    c.rect(x_pos, y_pos - row_height, col_widths[0], row_height, fill=1, stroke=1)
+    c.setFillColor(colors.black)
+    c.setFont("Cambria", 9)
+    c.drawString(x_pos + 5, y_pos - 15, "Renew as invited ☐ (Please Tick)")
+    
+    x_pos += col_widths[0]
+    c.setFillColor(colors.white)
+    c.rect(x_pos, y_pos - row_height, col_widths[1], row_height, fill=1, stroke=1)
+    
+    x_pos += col_widths[1]
+    c.rect(x_pos, y_pos - row_height, col_widths[2], row_height, fill=1, stroke=1)
+    
+    y_pos -= row_height
+    
+    # Row 2: Renew with alterations
+    x_pos = margin
+    c.setFillColor(colors.white)
+    c.rect(x_pos, y_pos - row_height, col_widths[0], row_height, fill=1, stroke=1)
+    c.setFillColor(colors.black)
+    c.drawString(x_pos + 5, y_pos - 15, "Renew with the following alteration/s:")
+    
+    x_pos += col_widths[0]
+    c.setFillColor(colors.white)
+    c.rect(x_pos, y_pos - row_height, col_widths[1], row_height, fill=1, stroke=1)
+    
+    x_pos += col_widths[1]
+    c.rect(x_pos, y_pos - row_height, col_widths[2], row_height, fill=1, stroke=1)
+    
+    y_pos -= row_height + 30  # Extra space after renewal confirmation
     
     # Main header paragraph
     c.setFillColor(colors.black)
@@ -541,12 +718,12 @@ def create_page2_renewal(c, data, qr_filename):
     justified_style_page1 = ParagraphStyle(
         'JustifiedPage1',
         fontName='Cambria',
-        fontSize=9,
+        fontSize=10,
         alignment=TA_JUSTIFY,
         leftIndent=0,
         rightIndent=0,
         spaceAfter=6,
-        leading=11
+        leading=12
     )
     
     # Note 1 with justified text
@@ -594,7 +771,14 @@ def create_page2_renewal(c, data, qr_filename):
     para4 = Paragraph(para4_text, justified_style_page1)
     para4.wrapOn(c, text_width_page1, 100)
     para4.drawOn(c, margin, y_pos - para4.height + 9)
-    y_pos -= para4.height + 8  # Reduced from 20 to 8
+    y_pos -= para4.height + 5
+    
+    # Add QR code payment instruction
+    para5_text = "For your convenience, you may also settle payments instantly via the MauCAS QR Code (Scan to Pay) below using any mobile banking app such as Juice, MauBank WithMe, Blink, MyT Money, or other supported applications."
+    para5 = Paragraph(para5_text, justified_style_page1)
+    para5.wrapOn(c, text_width_page1, 100)
+    para5.drawOn(c, margin, y_pos - para5.height + 9)
+    y_pos -= para5.height + 8
     
     # Add logo and QR code vertically stacked and center aligned (compact spacing)
     logo_qr_y_position = y_pos + 5  # Move up slightly to maintain alignment
@@ -638,71 +822,6 @@ def create_page2_renewal(c, data, qr_filename):
         logo_qr_y_position -= 15
     
     y_pos = logo_qr_y_position - 5  # Reduced spacing after logo/QR stack
-    
-    y_pos -= 15  # More space before renewal confirmation table
-    
-    # Renewal confirmation section
-    c.setFillColor(colors.lightblue)
-    c.rect(margin, y_pos - 15, width - 2 * margin, 20, fill=1, stroke=1)
-    c.setFillColor(colors.black)
-    c.setFont("Cambria-Bold", 10)
-    c.drawString(margin + 5, y_pos - 10, "RENEWAL CONFIRMATION (Section to be filled in and signed by the Policyholder):")
-    y_pos -= 25
-    
-    # Confirmation table with proper layout
-    table_width = width - 2 * margin
-    col_widths = [280, 140, 100]
-    row_height = 20  # Reduced from 25 to 20
-    
-    # Header row
-    c.setFillColor(colors.lightgrey)
-    x_pos = margin
-    headers = ["Renewal Instructions / Remarks", "Signature", "Date"]
-    
-    for i, header in enumerate(headers):
-        c.rect(x_pos, y_pos - row_height, col_widths[i], row_height, fill=1, stroke=1)
-        c.setFillColor(colors.black)
-        c.setFont("Cambria-Bold", 9)
-        c.drawString(x_pos + 5, y_pos - 15, header)
-        c.setFillColor(colors.lightgrey)
-        x_pos += col_widths[i]
-    
-    y_pos -= row_height
-    
-    # Data rows
-    c.setFillColor(colors.white)
-    
-    # Row 1: Renew as invited
-    x_pos = margin
-    c.rect(x_pos, y_pos - row_height, col_widths[0], row_height, fill=1, stroke=1)
-    c.setFillColor(colors.black)
-    c.setFont("Cambria", 9)
-    c.drawString(x_pos + 5, y_pos - 15, "Renew as invited ☐ (Please Tick)")
-    
-    x_pos += col_widths[0]
-    c.setFillColor(colors.white)
-    c.rect(x_pos, y_pos - row_height, col_widths[1], row_height, fill=1, stroke=1)
-    
-    x_pos += col_widths[1]
-    c.rect(x_pos, y_pos - row_height, col_widths[2], row_height, fill=1, stroke=1)
-    
-    y_pos -= row_height
-    
-    # Row 2: Renew with alterations
-    x_pos = margin
-    c.setFillColor(colors.white)
-    c.rect(x_pos, y_pos - row_height, col_widths[0], row_height, fill=1, stroke=1)
-    c.setFillColor(colors.black)
-    c.drawString(x_pos + 5, y_pos - 15, "Renew with the following alteration/s:")
-    
-    x_pos += col_widths[0]
-    c.setFillColor(colors.white)
-    c.rect(x_pos, y_pos - row_height, col_widths[1], row_height, fill=1, stroke=1)
-    
-    x_pos += col_widths[1]
-    c.rect(x_pos, y_pos - row_height, col_widths[2], row_height, fill=1, stroke=1)
-    
-    y_pos -= row_height
 
 if __name__ == "__main__":
     print("🚗 Generating Motor Insurance Renewal Notice...")

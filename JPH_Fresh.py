@@ -353,8 +353,8 @@ for index, row in df.iterrows():
     try:
         payload = {
             "MerchantId": 151,
-            "SetTransactionAmount": True,
-            "TransactionAmount": str(amount),
+            "SetTransactionAmount": False,
+            "TransactionAmount": 0,
             "SetConvenienceIndicatorTip": False,
             "ConvenienceIndicatorTip": 0,
             "SetConvenienceFeeFixed": False,
@@ -418,8 +418,8 @@ for index, row in df.iterrows():
         continue
 
     # Create PDF filenames for both protected and unprotected versions
-    protected_pdf_filename = f"{protected_folder}/{safe_policy}_{safe_name}.pdf"
-    unprotected_pdf_filename = f"{unprotected_folder}/{safe_policy}_{safe_name}.pdf"
+    protected_pdf_filename = f"{protected_folder}/{index+1:03d}_{safe_policy}_{safe_name}.pdf"
+    unprotected_pdf_filename = f"{unprotected_folder}/{index+1:03d}_{safe_policy}_{safe_name}.pdf"
     
     if total_rows > 1000 and current_row % 50 == 0:
         print(f"[PROGRESS] Row {current_row}: Creating PDF document...")

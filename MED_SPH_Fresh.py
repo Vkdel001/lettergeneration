@@ -290,8 +290,8 @@ for index, row in df.iterrows():
     try:
         payload = {
             "MerchantId": 151,
-            "SetTransactionAmount": True,
-            "TransactionAmount": str(amount),
+            "SetTransactionAmount": False,
+            "TransactionAmount": 0,
             "SetConvenienceIndicatorTip": False,
             "ConvenienceIndicatorTip": 0,
             "SetConvenienceFeeFixed": False,
@@ -352,7 +352,7 @@ for index, row in df.iterrows():
         continue
 
     # Create a PDF for the current policyholder - NEW FORMAT
-    pdf_filename = f"output_letters/{safe_policy}_{safe_name}.pdf"
+    pdf_filename = f"output_letters/{index+1:03d}_{safe_policy}_{safe_name}.pdf"
     c = canvas.Canvas(pdf_filename, pagesize=A4)
     width, height = A4
     margin = 50

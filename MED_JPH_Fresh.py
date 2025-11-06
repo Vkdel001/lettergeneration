@@ -293,8 +293,8 @@ for index, row in df.iterrows():
     try:
         payload = {
             "MerchantId": 151,
-            "SetTransactionAmount": True,
-            "TransactionAmount": str(amount),
+            "SetTransactionAmount": False,
+            "TransactionAmount": 0,
             "SetConvenienceIndicatorTip": False,
             "ConvenienceIndicatorTip": 0,
             "SetConvenienceFeeFixed": False,
