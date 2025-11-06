@@ -168,13 +168,13 @@ def get_unprotected_pdfs(folder_path):
         print(f"Warning: Unprotected folder not found at {unprotected_path}")
         # Fallback to main folder for legacy structure
         if os.path.exists(folder_path):
-            pdf_files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) 
+            pdf_files = [os.path.join(folder_path, f) for f in sorted(os.listdir(folder_path)) 
                         if f.endswith('.pdf')]
             print(f"Using legacy structure: found {len(pdf_files)} PDFs in main folder")
             return pdf_files
         return []
     
-    pdf_files = [os.path.join(unprotected_path, f) for f in os.listdir(unprotected_path) 
+    pdf_files = [os.path.join(unprotected_path, f) for f in sorted(os.listdir(unprotected_path)) 
                 if f.endswith('.pdf')]
     print(f"Found {len(pdf_files)} unprotected PDFs to combine")
     print("Note: Protected PDFs are excluded (each has unique password)")
