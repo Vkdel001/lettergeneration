@@ -276,10 +276,17 @@ const configureBrevoBySender = (type) => {
 
 ```python
 # Combines individual PDFs into batches
-# Separate functions for motor and healthcare
-# Configurable batch sizes
-# Progress reporting
+# Maintains Excel row order through sequence numbering
+# Uses PyMuPDF for QR code preservation
+# Cross-platform file sorting for consistent ordering
+# Configurable batch sizes and progress reporting
 ```
+
+**Key Features (v1.2)**:
+- **Sequence Preservation**: Processes PDFs in 001_, 002_, 003_ order
+- **Excel Row Mapping**: Combined PDF pages match Excel row sequence
+- **Cross-Platform Sorting**: Explicit file sorting prevents random ordering
+- **QR Code Protection**: Uses PyMuPDF to preserve payment QR codes
 
 ## Installation & Setup
 

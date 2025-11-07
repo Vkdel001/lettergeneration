@@ -888,24 +888,25 @@ NIC Team
       // Create FormData with Excel file
       const formData = new FormData();
 
-      // Convert data back to Excel format
-      const ws = XLSX.utils.json_to_sheet(data);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-      const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-      const excelBlob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      // Use original file instead of recreating from JSON
+      // This preserves compression and reduces file size
+      if (!file) {
+        throw new Error('No file selected');
+      }
 
       // Generate output folder name based on file
       const outputFolder = getOutputFolderName(file.name);
       console.log(`[DEBUG] File name: ${file.name}`);
+      console.log(`[DEBUG] File size: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
       console.log(`[DEBUG] Output folder: ${outputFolder}`);
       console.log(`[DEBUG] Previous month: ${getPreviousMonthFolder()}`);
 
-      formData.append('excelFile', excelBlob, 'Generic_Template.xlsx');
+      formData.append('excelFile', file, 'Generic_Template.xlsx');
       formData.append('template', selectedTemplate);
       formData.append('outputFolder', outputFolder);
 
       console.log(`[DEBUG] FormData contents:`);
+      console.log(`[DEBUG] - excelFile: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
       console.log(`[DEBUG] - template: ${selectedTemplate}`);
       console.log(`[DEBUG] - outputFolder: ${outputFolder}`);
       console.log(`Calling Python script: ${selectedTemplate}`);

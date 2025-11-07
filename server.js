@@ -18,9 +18,11 @@ const isElectron = process.versions && process.versions.electron;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+// Increase payload size limits for large Excel files (50MB)
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Configure multer for file uploads
+// Configure multer for file uploads with size limits
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = './temp_uploads';
@@ -34,7 +36,12 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ storage });
+const upload = multer({ 
+  storage,
+  limits: {
+    fileSize: 50 * 1024 * 1024 // 50MB limit
+  }
+});
 
 // Ensure output directory exists
 const outputDir = './generated_pdfs';

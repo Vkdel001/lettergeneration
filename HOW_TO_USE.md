@@ -3,7 +3,10 @@
 ## Overview
 This application generates personalized PDF arrears letters for insurance policyholders. It combines a React frontend with a Node.js backend that executes Python scripts to create professional PDF documents.
 
-### 🚨 Latest Updates (October 2025)
+### 🚨 Latest Updates (November 2025)
+- **PDF Sequence Ordering:** Fixed PDF combining to maintain exact Excel row order
+- **Template Sequence Numbering:** All PDF templates now generate files with 001_, 002_, 003_ prefixes
+- **Cross-Platform Sorting:** Fixed filesystem-dependent file ordering issues between local/VPS
 - **QR Code Preservation:** Fixed corruption issues in PDF combining using PyMuPDF
 - **Environment Detection:** Automatic API URL detection for local/VPS deployment
 - **Password Protection:** Enhanced PyPDF2 compatibility for all versions
@@ -141,6 +144,12 @@ Each generated PDF includes:
 - **QR code** for mobile payments
 - **Professional footer**
 
+### PDF Sequence Ordering (New Feature)
+- **Individual PDFs** are generated with sequence numbers: `001_Policy123_John_Doe.pdf`
+- **Combined PDFs** maintain exact Excel row order (Row 1 → Page 1, Row 2 → Page 2, etc.)
+- **Cross-platform compatibility** ensures consistent ordering on all systems
+- **Zero-padded numbering** (001, 002, 010, 100) for proper alphabetical sorting
+
 ### Currency Formatting
 - Amounts display with commas: `MUR 5,000.00`
 - Consistent formatting across all templates
@@ -208,6 +217,12 @@ To send PDFs via email, configure EmailJS:
 - Close Windows Explorer in output folder
 - Restart the server
 
+**"Combined PDFs in wrong order"**
+- ✅ **FIXED in v1.2**: All templates now use sequence numbering
+- Check if PDFs have 001_, 002_ prefixes: `ls output_*/unprotected/ | head -5`
+- Clear old non-sequenced PDFs: `find output_*/ -name "*.pdf" ! -name "[0-9][0-9][0-9]_*"`
+- Regenerate PDFs if mixing old and new files
+
 **"Failed to fetch templates"**
 - Ensure backend server is running on port 3001
 - Check for firewall/antivirus blocking
@@ -227,6 +242,14 @@ python3 -c "import fitz; print('PyMuPDF OK')"  # Should not error
 ```bash
 python3 JPH_Fresh.py --help                    # Should show help
 python3 combine_pdfs.py --help                 # Should show help
+```
+
+**Verify Sequence Ordering:**
+```bash
+# Check if PDFs have sequence numbers
+ls output_*/unprotected/ | head -5              # Should show 001_, 002_, 003_
+# Test combining maintains order
+python3 combine_pdfs.py --folder output_test_folder --output test_combined.pdf
 ```
 
 **Check Services:**
@@ -288,6 +311,12 @@ project/
 
 ## 🔧 Version History
 
+### Version 1.2 (November 2025) - Sequence Ordering
+- **PDF Sequence Ordering**: All templates generate PDFs with 001_, 002_, 003_ prefixes
+- **Excel Row Order Preservation**: Combined PDFs maintain exact Excel row sequence
+- **Cross-Platform File Sorting**: Fixed random ordering issues on different filesystems
+- **Template Updates**: Updated all 6 PDF generation templates (JPH, SPH, Company, MED variants)
+
 ### Version 1.1 (October 2025) - Critical Fixes
 - **QR Code Preservation**: Fixed corruption in PDF combining using PyMuPDF
 - **Python Compatibility**: Fixed `python` vs `python3` command issues
@@ -304,7 +333,10 @@ project/
 
 ---
 
-**Last Updated**: October 2025
-**Version**: 1.1 (Critical Fixes Applied)
+**Last Updated**: November 2025
+**Version**: 1.2 (Sequence Ordering Applied)
 
-**⚠️ IMPORTANT**: If upgrading from v1.0, ensure PyMuPDF is installed and Python symlink is created to prevent QR code corruption and compatibility issues.
+**⚠️ IMPORTANT**: 
+- **v1.2 Users**: All PDF templates now generate sequenced files (001_, 002_, etc.) for proper ordering
+- **v1.1 Users**: Ensure PyMuPDF is installed and Python symlink is created to prevent QR code corruption
+- **Legacy Users**: Clear old PDF folders to avoid mixing sequenced and non-sequenced files
