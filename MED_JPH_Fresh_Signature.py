@@ -326,7 +326,16 @@ for index, row in df.iterrows():
         continue
 
     # Format values for use in the PDF
-    name = f"{owner1_title} {owner1_first_name} {owner1_surname}"
+    # Handle NaN values in name fields to avoid "nan nan" in PDFs
+    name_parts = []
+    if owner1_title and pd.notna(owner1_title) and str(owner1_title).strip().lower() not in ['nan', '']:
+        name_parts.append(str(owner1_title).strip())
+    if owner1_first_name and pd.notna(owner1_first_name) and str(owner1_first_name).strip().lower() not in ['nan', '']:
+        name_parts.append(str(owner1_first_name).strip())
+    if owner1_surname and pd.notna(owner1_surname) and str(owner1_surname).strip().lower() not in ['nan', '']:
+        name_parts.append(str(owner1_surname).strip())
+    name = ' '.join(name_parts) if name_parts else 'Name_Missing'
+    
     amount = float(arrears_amount) if pd.notna(arrears_amount) else 0.0
     no_installments = no_installments if pd.notna(no_installments) else 0
     gross_premium = float(gross_premium) if pd.notna(gross_premium) else 0.0
