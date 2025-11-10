@@ -277,23 +277,36 @@ for index, row in df.iterrows():
     print(f"[DEBUG] Mobile No: '{mobile_no}'")
     print(f"[DEBUG] NIC: '{nic}'")
     
-    # Process arrears processing date
+    # Process arrears processing date with improved parsing
     if arrears_processing_date_raw and pd.notna(arrears_processing_date_raw):
         try:
-            # Handle Excel serial date number (e.g., 45900.0901388889)
+            # Strategy 1: Handle Excel serial date number (e.g., 45900.0901388889)
             if isinstance(arrears_processing_date_raw, (int, float)):
-                # Convert Excel serial number to datetime
                 date_obj = pd.to_datetime(arrears_processing_date_raw, origin='1899-12-30', unit='D')
-                arrears_date_formatted = date_obj.strftime('%d-%B-%Y')  # "31-August-2025"
-            else:
-                # Handle string format "31/08/2025  02:09:48" (fallback)
-                date_part = str(arrears_processing_date_raw).split()[0]
-                date_obj = datetime.strptime(date_part, '%d/%m/%Y')
                 arrears_date_formatted = date_obj.strftime('%d-%B-%Y')
-        except:
-            arrears_date_formatted = "29 August 2025"  # fallback
+            # Strategy 2: Let pandas auto-detect string date formats
+            elif isinstance(arrears_processing_date_raw, str):
+                # Try pandas auto-detection with dayfirst=True for DD/MM/YYYY format
+                date_obj = pd.to_datetime(arrears_processing_date_raw, dayfirst=True)
+                arrears_date_formatted = date_obj.strftime('%d-%B-%Y')
+            # Strategy 3: Already a datetime object
+            else:
+                date_obj = pd.to_datetime(arrears_processing_date_raw)
+                arrears_date_formatted = date_obj.strftime('%d-%B-%Y')
+        except Exception as e:
+            # Fallback to last day of previous month (typical arrears processing date)
+            print(f"[WARNING] Could not parse date '{arrears_processing_date_raw}': {e}")
+            today = datetime.now()
+            first_day_current_month = today.replace(day=1)
+            last_day_previous_month = first_day_current_month - pd.Timedelta(days=1)
+            arrears_date_formatted = last_day_previous_month.strftime('%d %B %Y')
+            print(f"[WARNING] Using last day of previous month as fallback: {arrears_date_formatted}")
     else:
-        arrears_date_formatted = "29 August 2025"  # fallback
+        # Use last day of previous month when date column is missing
+        today = datetime.now()
+        first_day_current_month = today.replace(day=1)
+        last_day_previous_month = first_day_current_month - pd.Timedelta(days=1)
+        arrears_date_formatted = last_day_previous_month.strftime('%d %B %Y')
     
     print(f"[DEBUG] Arrears Processing Date: '{arrears_processing_date_raw}' -> '{arrears_date_formatted}'")
     
