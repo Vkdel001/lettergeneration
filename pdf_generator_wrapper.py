@@ -10,7 +10,33 @@ import os
 import shutil
 import argparse
 import subprocess
+import glob
 from pathlib import Path
+
+def cleanup_old_excel_files():
+    """Remove old Excel files before processing new upload to prevent wrong file usage"""
+    patterns_to_remove = [
+        'Generic_Template.xlsx',           # Previous main file
+        'Generic_Template_debug_*.xlsx',   # Debug files  
+        'Generic_Template_backup_*.xlsx',  # Backup files
+        'Generic_Template_processed.xlsx', # Processed files
+        'Generic_template.xlsx'            # Case variations
+    ]
+    
+    removed_count = 0
+    for pattern in patterns_to_remove:
+        for file_path in glob.glob(pattern):
+            try:
+                os.remove(file_path)
+                print(f"[CLEANUP] Removed old file: {file_path}")
+                removed_count += 1
+            except Exception as e:
+                print(f"[CLEANUP] Warning: Could not remove {file_path}: {e}")
+    
+    if removed_count > 0:
+        print(f"[CLEANUP] Cleaned {removed_count} old Excel files")
+    else:
+        print("[CLEANUP] No old Excel files found to clean")
 
 def main():
     parser = argparse.ArgumentParser(description='Generate PDFs using various templates')
@@ -19,6 +45,9 @@ def main():
     parser.add_argument('--output', required=True, help='Output directory for PDFs')
     
     args = parser.parse_args()
+    
+    # STEP 1: Clean old Excel files FIRST to prevent wrong file usage
+    cleanup_old_excel_files()
     
     # Validate template file exists
     if not os.path.exists(args.template):
@@ -143,6 +172,15 @@ def main():
         print("Template executed successfully")
         print(f"STDOUT: {result.stdout}")
         
+        # Mark input file as processed AFTER successful execution
+        try:
+            if os.path.exists(expected_filename):
+                processed_filename = expected_filename.replace('.xlsx', '_processed.xlsx')
+                shutil.move(expected_filename, processed_filename)
+                print(f"Marked file as processed: {processed_filename}")
+        except Exception as e:
+            print(f"Warning: Could not mark file as processed: {e}")
+        
         # Check if PDFs were generated in the target output directory (including subfolders)
         moved_files = 0
         if os.path.exists(args.output):
@@ -180,14 +218,14 @@ def main():
         # Restore original working directory
         os.chdir(original_cwd)
         
-        # Mark input file as processed instead of deleting
+        # Final cleanup - only if file still exists (in case of errors)
         try:
             if os.path.exists(expected_filename):
                 processed_filename = expected_filename.replace('.xlsx', '_processed.xlsx')
                 shutil.move(expected_filename, processed_filename)
-                print(f"Marked file as processed: {processed_filename}")
+                print(f"Final cleanup: Marked remaining file as processed: {processed_filename}")
         except Exception as e:
-            print(f"Warning: Could not mark file as processed: {e}", file=sys.stderr)
+            print(f"Warning: Final cleanup failed: {e}", file=sys.stderr)
 
 if __name__ == "__main__":
     main()

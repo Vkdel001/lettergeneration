@@ -55,10 +55,8 @@ def load_excel_file():
         "temp_uploads/Generic_template.xlsx",  # Case variation in temp
     ]
     
-    # Also check for any .xlsx files in current directory as fallback
-    import glob
-    xlsx_files = glob.glob("*.xlsx")
-    possible_files.extend(xlsx_files)
+    # Removed dangerous glob fallback to prevent using wrong Excel files
+    # Only use specific expected file locations
     
     # Remove duplicates while preserving order
     seen = set()
