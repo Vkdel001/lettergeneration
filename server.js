@@ -10,6 +10,31 @@ import AuthService from './auth_service.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Environment-aware Python path detection
+const getPythonPath = () => {
+  // Check if we're on VPS (look for venv directory)
+  const venvPath = path.join(__dirname, 'venv', 'bin', 'python');
+  if (fs.existsSync(venvPath)) {
+    console.log('[PYTHON] Using VPS virtual environment:', venvPath);
+    return venvPath;
+  }
+  
+  // Check if we're in a different virtual environment
+  if (process.env.VIRTUAL_ENV) {
+    const envPython = path.join(process.env.VIRTUAL_ENV, 'bin', 'python');
+    if (fs.existsSync(envPython)) {
+      console.log('[PYTHON] Using detected virtual environment:', envPython);
+      return envPython;
+    }
+  }
+  
+  // Default to system python (for local development)
+  console.log('[PYTHON] Using system python (local development)');
+  return 'python';
+};
+
+const PYTHON_PATH = getPythonPath();
+
 const app = express();
 const port = 3001;
 
@@ -140,9 +165,9 @@ app.post('/api/generate-pdfs', upload.single('excelFile'), (req, res) => {
     '--output', outputFolder
   ];
 
-  console.log(`[DEBUG] Python command: python ${pythonArgs.join(' ')}`);
+  console.log(`[DEBUG] Python command: ${PYTHON_PATH} ${pythonArgs.join(' ')}`);
 
-  const python = spawn('python', pythonArgs, {
+  const python = spawn(PYTHON_PATH, pythonArgs, {
     encoding: 'utf8',
     env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
   });
@@ -653,7 +678,7 @@ app.post('/api/send-emails-brevo', (req, res) => {
     console.log(`[DEBUG] PDF folder: ${folderPath}`);
 
     // Execute Brevo email service
-    const python = spawn('python', [
+    const python = spawn(PYTHON_PATH, [
       'brevo_email_service.py',
       '--data', emailDataFile,
       '--folder', folderPath,
@@ -810,10 +835,10 @@ app.post('/api/combine-pdfs', (req, res) => {
       '--output', outputPath
     ];
 
-    console.log(`[DEBUG] Python command: python ${pythonArgs.join(' ')}`);
+    console.log(`[DEBUG] Python command: ${PYTHON_PATH} ${pythonArgs.join(' ')}`);
     console.log(`[DEBUG] Using folder-based approach (no temp JSON file needed)`);
 
-    const python = spawn('python', pythonArgs, {
+    const python = spawn(PYTHON_PATH, pythonArgs, {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe']
     });
@@ -926,9 +951,9 @@ app.post('/api/generate-sms-links', (req, res) => {
       '--base-url', `${req.protocol}://${req.get('host')}`
     ];
 
-    console.log(`[DEBUG] Python command: python ${pythonArgs.join(' ')}`);
+    console.log(`[DEBUG] Python command: ${PYTHON_PATH} ${pythonArgs.join(' ')}`);
 
-    const python = spawn('python', pythonArgs, {
+    const python = spawn(PYTHON_PATH, pythonArgs, {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe']
     });
@@ -1059,9 +1084,9 @@ app.post('/api/generate-sms-links-from-folder', (req, res) => {
       '--base-url', baseUrl || `${req.protocol}://${req.get('host')}`
     ];
 
-    console.log(`[DEBUG] Python command: python ${pythonArgs.join(' ')}`);
+    console.log(`[DEBUG] Python command: ${PYTHON_PATH} ${pythonArgs.join(' ')}`);
 
-    const python = spawn('python', pythonArgs, {
+    const python = spawn(PYTHON_PATH, pythonArgs, {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe']
     });
@@ -1781,6 +1806,7 @@ function generateLetterViewerHTML(letterData) {
         <div class="date">${letterData.date}</div>
 
         <div class="address">
+          <p style="margin-bottom: 10px; font-weight: bold; font-size: 14pt;">${letterData.customerName.toUpperCase()}</p>
           ${letterData.address.map(line => `<p>${line.toUpperCase()}</p>`).join('')}
         </div>
 
@@ -2069,7 +2095,7 @@ print(img_base64)
       `
     ];
 
-    const python = spawn('python', pythonArgs, {
+    const python = spawn(PYTHON_PATH, pythonArgs, {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe']
     });
