@@ -9,6 +9,8 @@ import AuthScreen from './components/AuthScreen.jsx';
 import TabNavigation from './components/TabNavigation.jsx';
 import DownloadProgress from './components/DownloadProgress.jsx';
 import FileBrowser from './components/FileBrowser.jsx';
+import FolderBasedSMSSection from './components/FolderBasedSMSSection.jsx';
+import EmailConfigSection from './components/EmailConfigSection.jsx';
 
 // Dynamic API URL - works both locally and on VPS with HTTPS
 const API_BASE = window.location.hostname === 'localhost'
@@ -61,6 +63,29 @@ const PDFGenerator = () => {
   const [activeTab, setActiveTab] = useState('combine');
   const [showDownloadProgress, setShowDownloadProgress] = useState(false);
   const [downloadInfo, setDownloadInfo] = useState(null);
+
+  // SMS Link state
+  const [smsLinksGenerated, setSmsLinksGenerated] = useState(false);
+  const [currentOutputFolder, setCurrentOutputFolder] = useState('');
+
+  // SMS Link generation callback
+  const handleSMSGenerated = (result) => {
+    console.log('[SMS] SMS generation completed:', result);
+    setSmsLinksGenerated(true);
+    // Refresh folders to show updated folder with SMS links
+    const fetchFolders = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/folders`);
+        const data = await response.json();
+        if (data.success) {
+          setAvailableFolders(data.folders);
+        }
+      } catch (error) {
+        console.error('Failed to refresh folders:', error);
+      }
+    };
+    fetchFolders();
+  };
 
   // Check for existing authentication on component mount
   useEffect(() => {
@@ -896,6 +921,7 @@ NIC Team
 
       // Generate output folder name based on file
       const outputFolder = getOutputFolderName(file.name);
+      setCurrentOutputFolder(outputFolder); // Store for SMS Link generation
       console.log(`[DEBUG] File name: ${file.name}`);
       console.log(`[DEBUG] File size: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
       console.log(`[DEBUG] Output folder: ${outputFolder}`);
@@ -1875,6 +1901,40 @@ NIC Team
                 onDownload={downloadWithProgress}
                 API_BASE={API_BASE}
               />
+            )}
+
+            {/* SMS Links Tab */}
+            {activeTab === 'sms-links' && (
+              <div className="space-y-6">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <h2 className="text-2xl font-bold mb-4 text-gray-800 text-center">SMS Link Management</h2>
+                  <p className="text-gray-600 text-center mb-6">
+                    Generate SMS links from any existing PDF folder - no need to wait during PDF generation!
+                  </p>
+                </div>
+                
+                <FolderBasedSMSSection
+                  API_BASE={API_BASE}
+                  isVisible={true}
+                />
+              </div>
+            )}
+
+            {/* Email Configuration Tab */}
+            {activeTab === 'email-config' && (
+              <div className="space-y-6">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <h2 className="text-2xl font-bold mb-4 text-gray-800 text-center">Email Notification Settings</h2>
+                  <p className="text-gray-600 text-center mb-6">
+                    Configure your email to receive notifications when PDF generation and SMS link creation are completed.
+                  </p>
+                </div>
+                
+                <EmailConfigSection
+                  API_BASE={API_BASE}
+                  isVisible={true}
+                />
+              </div>
             )}
 
             {/* Download Progress Modal */}

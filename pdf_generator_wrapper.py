@@ -11,6 +11,7 @@ import shutil
 import argparse
 import subprocess
 import glob
+import time
 from pathlib import Path
 
 def cleanup_old_excel_files():
@@ -39,6 +40,8 @@ def cleanup_old_excel_files():
         print("[CLEANUP] No old Excel files found to clean")
 
 def main():
+    start_time = time.time()  # Track processing time for email notification
+    
     parser = argparse.ArgumentParser(description='Generate PDFs using various templates')
     parser.add_argument('--template', required=True, help='Template script to use')
     parser.add_argument('--input', required=True, help='Input Excel file path')
@@ -207,6 +210,63 @@ def main():
             print(f"Warning: Target output directory not found: {args.output}")
         
         print(f"Successfully generated {moved_files} PDF files in {args.output}")
+        
+        # ENHANCEMENT: Send completion email notification
+        try:
+            # Get user email from environment or use a default
+            user_email = os.getenv('USER_EMAIL', 'admin@niclmauritius.site')
+            user_name = os.getenv('USER_NAME', 'NICL User')
+            
+            # Calculate processing time
+            end_time = time.time()
+            processing_time_seconds = int(end_time - start_time)
+            processing_time = f"{processing_time_seconds // 60}m {processing_time_seconds % 60}s"
+            
+            # Extract template type from filename
+            template_type = os.path.basename(args.template).replace('.py', '').replace('_Fresh', '').replace('_Signature', '')
+            folder_name = os.path.basename(args.output)
+            
+            # Send completion email
+            email_cmd = [
+                'python', 'completion_email_service.py',
+                '--type', 'pdf',
+                '--email', user_email,
+                '--name', user_name,
+                '--folder', folder_name,
+                '--count', str(moved_files),
+                '--time', processing_time,
+                '--template', template_type
+            ]
+            
+            print(f"[EMAIL] Sending completion notification to {user_email}...")
+            email_result = subprocess.run(email_cmd, capture_output=True, text=True, timeout=30)
+            
+            if email_result.returncode == 0:
+                print(f"[EMAIL] ✅ Completion notification sent successfully")
+            else:
+                print(f"[EMAIL] ⚠️ Failed to send completion notification: {email_result.stderr}")
+                
+        except Exception as e:
+            print(f"[EMAIL] Warning: Could not send completion notification: {e}")
+        
+        # ENHANCEMENT: Save a copy of the Excel file in the output folder for future SMS link generation
+        try:
+            if os.path.exists(expected_filename):
+                # Create a folder-specific Excel file for SMS link generation
+                folder_name = os.path.basename(args.output)
+                excel_copy_path = os.path.join(args.output, f"{folder_name}_source.xlsx")
+                shutil.copy2(expected_filename, excel_copy_path)
+                print(f"[SMS-PREP] Saved Excel file copy for SMS generation: {excel_copy_path}")
+            elif os.path.exists(args.input):
+                # Use the original input file if expected filename doesn't exist
+                folder_name = os.path.basename(args.output)
+                excel_copy_path = os.path.join(args.output, f"{folder_name}_source.xlsx")
+                shutil.copy2(args.input, excel_copy_path)
+                print(f"[SMS-PREP] Saved original Excel file copy for SMS generation: {excel_copy_path}")
+            else:
+                print("[SMS-PREP] Warning: Could not find Excel file to copy for SMS generation")
+        except Exception as e:
+            print(f"[SMS-PREP] Warning: Could not save Excel file copy for SMS generation: {e}")
         
     except subprocess.TimeoutExpired:
         print(f"Template execution timed out ({timeout_seconds/60:.0f} minutes)", file=sys.stderr)

@@ -1,6 +1,7 @@
 # Excel files with real data
 *.xlsx
 *.xls
+Generic_Template*.xlsx
 
 # Generated PDF files
 *.pdf
@@ -9,6 +10,7 @@
 output_*/
 generated_pdfs/
 temp_uploads/
+letter_links/
 
 # Specific output folders (for clarity)
 output_motor/
@@ -37,6 +39,7 @@ qr_*.png
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc
 *.so
 .Python
 build/
@@ -68,6 +71,7 @@ fonts/
 .env.production.local
 config.json
 secrets.json
+.env.production
 
 # IDE and editor files
 .vscode/
@@ -97,6 +101,7 @@ temp/
 tmp/
 *.tmp
 *_temp.*
+test_*
 
 # Backup files
 *.bak

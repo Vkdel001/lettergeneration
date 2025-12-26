@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Download, Folder } from 'lucide-react';
+import { FileText, Download, Folder, MessageSquare, Mail } from 'lucide-react';
 
 const TabNavigation = ({ activeTab, onTabChange }) => {
   const tabs = [
@@ -7,13 +7,25 @@ const TabNavigation = ({ activeTab, onTabChange }) => {
       id: 'combine',
       label: 'Generate and Combine',
       icon: FileText,
-      description: ''
+      description: 'Upload Excel files and generate PDF letters'
+    },
+    {
+      id: 'sms-links',
+      label: 'SMS Links',
+      icon: MessageSquare,
+      description: 'Generate SMS links from existing PDF folders'
     },
     {
       id: 'browse',
       label: 'Browse & Download',
       icon: Folder,
       description: 'Download previously combined PDF files'
+    },
+    {
+      id: 'email-config',
+      label: 'Email Notifications',
+      icon: Mail,
+      description: 'Configure email notifications for completion alerts'
     }
   ];
 
@@ -21,7 +33,7 @@ const TabNavigation = ({ activeTab, onTabChange }) => {
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
       <h2 className="text-2xl font-bold mb-6 text-gray-800 text-center">Manage Old Files</h2>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
