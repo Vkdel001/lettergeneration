@@ -1350,9 +1350,9 @@ function generateLetterViewerHTML(letterData) {
           font-family: 'Cambria', 'Times New Roman', serif; 
           line-height: 1.4; 
           color: #000; 
-          background-color: #f5f5f5;
-          padding: 10px;
-          padding-bottom: 120px; /* Space for fixed bottom buttons */
+          background-color: #f8f9fa;
+          padding: 15px;
+          padding-bottom: 100px; /* Space for floating action button */
         }
         .container { 
           max-width: 100%; 
@@ -1360,56 +1360,56 @@ function generateLetterViewerHTML(letterData) {
           background: white; 
           padding: 20px; 
           border-radius: 8px;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
         
         /* Header with centered logo */
         .header { 
           text-align: center;
-          margin-bottom: 30px;
-          padding-bottom: 20px;
-          border-bottom: 2px solid #0066cc;
+          margin-bottom: 25px;
+          padding-bottom: 15px;
+          border-bottom: 1px solid #0066cc;
         }
         .logo { 
           display: block;
-          margin: 0 auto 15px auto;
-          width: 120px;
+          margin: 0 auto 10px auto;
+          width: 100px;
           height: auto;
           max-width: 100%;
         }
         .company-name {
-          font-size: 18pt;
+          font-size: 14pt;
           font-weight: bold;
           color: #0066cc;
-          margin-top: 10px;
+          margin-top: 8px;
         }
         
         /* Date positioning */
         .date { 
           text-align: left; 
-          margin-bottom: 20px; 
+          margin-bottom: 15px; 
           font-weight: bold;
-          font-size: 16pt;
+          font-size: 13pt;
           color: #333;
         }
         
         /* Address block */
         .address { 
-          margin-bottom: 25px; 
+          margin-bottom: 20px; 
           line-height: 1.3;
         }
         .address p { 
-          margin-bottom: 5px; 
+          margin-bottom: 3px; 
           font-weight: bold;
-          font-size: 16pt;
+          font-size: 13pt;
           text-transform: uppercase;
         }
         
         /* Subject line */
         .subject { 
           font-weight: bold; 
-          margin: 25px 0; 
-          font-size: 18pt;
+          margin: 20px 0; 
+          font-size: 14pt;
           text-decoration: underline;
           text-align: center;
           color: #333;
@@ -1417,135 +1417,177 @@ function generateLetterViewerHTML(letterData) {
         
         /* Salutation */
         .salutation { 
-          margin-bottom: 20px; 
-          font-size: 16pt;
+          margin-bottom: 15px; 
+          font-size: 13pt;
           font-weight: bold;
         }
         
         /* Body content */
         .content { 
-          margin-bottom: 20px; 
+          margin-bottom: 15px; 
           text-align: justify;
-          font-size: 15pt;
+          font-size: 12pt;
           line-height: 1.5;
         }
         
-        /* Policy table */
+        /* Mobile-optimized policy table */
         .policy-table { 
           width: 100%; 
           border-collapse: collapse; 
-          margin: 25px 0; 
-          font-size: 14pt;
+          margin: 20px 0; 
+          font-size: 11pt;
           background: #f8f9fa;
+          border-radius: 8px;
+          overflow: hidden;
         }
-        .policy-table th, .policy-table td { 
-          border: 2px solid #0066cc; 
-          padding: 12px 8px; 
-          text-align: center; 
-          vertical-align: middle;
+        .policy-table thead,
+        .policy-table tbody,
+        .policy-table tr {
+          display: block;
         }
-        .policy-table th { 
-          background-color: #0066cc; 
-          color: white;
-          font-weight: bold;
-          font-size: 13pt;
+        .policy-table thead tr {
+          position: absolute;
+          top: -9999px;
+          left: -9999px;
+        }
+        .policy-table tr {
+          border: 2px solid #0066cc;
+          margin-bottom: 0;
+          padding: 15px;
+          background: white;
         }
         .policy-table td {
-          font-size: 14pt;
+          border: none;
+          display: flex;
+          text-align: left;
+          padding: 8px 0;
+          border-bottom: 1px solid #eee;
+          align-items: flex-start;
+          flex-wrap: wrap;
+        }
+        .policy-table td:before {
+          content: attr(data-label);
+          font-weight: bold;
+          color: #0066cc;
+          display: block;
+          width: 100%;
+          margin-bottom: 4px;
+          font-size: 10pt;
         }
         .policy-table td:last-child {
+          border-bottom: none;
           font-weight: bold;
-          color: #333;
-          font-size: 16pt;
+          color: #d32f2f;
+          font-size: 14pt;
+        }
+        .policy-table td:last-child:before {
+          color: #d32f2f;
+          font-weight: bold;
         }
         
         /* QR Code section */
         .qr-section { 
           text-align: center; 
-          margin: 30px 0; 
-          padding: 25px;
+          margin: 25px 0; 
+          padding: 20px;
+          background: #f8f9fa;
+          border-radius: 8px;
         }
         .qr-code { 
-          width: 140px; 
-          height: 140px; 
-          margin: 15px auto;
+          width: 120px; 
+          height: 120px; 
+          margin: 10px auto;
           display: block;
         }
         .maucas-logo {
-          width: 130px;
+          width: 100px;
           height: auto;
-          margin-bottom: 15px;
+          margin-bottom: 10px;
           display: block;
           margin-left: auto;
           margin-right: auto;
         }
         .zwenn-logo {
-          width: 70px;
+          width: 60px;
           height: auto;
-          margin-top: 15px;
+          margin-top: 10px;
           display: block;
           margin-left: auto;
           margin-right: auto;
         }
         
-        /* Action buttons - Fixed bottom bar */
+        /* Floating action button - Mobile - FORCE VISIBLE */
         .actions { 
-          position: fixed;
-          bottom: 0;
-          left: 0;
-          right: 0;
-          background: linear-gradient(135deg, #0066cc, #004499);
-          padding: 20px 15px;
-          box-shadow: 0 -5px 20px rgba(0,0,0,0.3);
-          z-index: 1000;
-          text-align: center;
+          position: fixed !important;
+          bottom: 20px !important;
+          right: 20px !important;
+          z-index: 99999 !important;
+          display: block !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+          pointer-events: auto !important;
         }
         .btn { 
-          display: block;
-          width: 100%;
-          max-width: 280px;
-          margin: 8px auto;
-          padding: 18px 20px;
-          background-color: #ffffff; 
-          color: #0066cc; 
-          text-decoration: none; 
-          border-radius: 25px; 
-          font-size: 18pt;
-          font-weight: bold;
-          border: 3px solid #ffffff;
-          box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-          transition: all 0.3s ease;
+          display: block !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+          width: 60px !important;
+          height: 60px !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          background-color: #ff4444 !important; /* Bright red for debugging */
+          color: white !important; 
+          text-decoration: none !important; 
+          border-radius: 50% !important; 
+          font-size: 24px !important;
+          font-weight: bold !important;
+          border: 3px solid white !important;
+          box-shadow: 0 4px 20px rgba(255, 68, 68, 0.6) !important;
+          transition: all 0.3s ease !important;
+          text-align: center !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          line-height: 1 !important;
+          position: relative !important;
         }
         .btn:hover, .btn:active { 
-          background-color: #f0f8ff;
-          transform: translateY(-2px);
-          box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+          background-color: #cc0000 !important;
+          transform: translateY(-2px) !important;
+          box-shadow: 0 6px 24px rgba(255, 68, 68, 0.8) !important;
+          color: white !important;
+          text-decoration: none !important;
         }
-        .btn.primary {
-          background-color: #28a745;
-          color: white;
-          border-color: #28a745;
-          font-size: 20pt;
-          padding: 22px 25px;
-          margin-bottom: 12px;
-          animation: pulse 2s infinite;
+        .btn.print {
+          display: none !important; /* Hide print button on mobile */
         }
-        .btn.primary:hover, .btn.primary:active {
-          background-color: #218838;
-          color: white;
+        
+        /* Ensure button is visible on very small screens */
+        @media (max-width: 480px) {
+          .actions {
+            bottom: 15px !important;
+            right: 15px !important;
+          }
+          .btn {
+            width: 55px !important;
+            height: 55px !important;
+            font-size: 20px !important;
+          }
         }
+        
+        /* Remove animation for now to debug */
         
         /* Checkmark bullets for SPH/JPH */
         .checkmark-list {
           list-style: none;
-          margin: 20px 0 20px 20px;
+          margin: 15px 0 15px 15px;
         }
         .checkmark-list li {
           position: relative;
-          margin-bottom: 12px;
-          padding-left: 25px;
-          font-size: 15pt;
-          line-height: 1.5;
+          margin-bottom: 10px;
+          padding-left: 20px;
+          font-size: 12pt;
+          line-height: 1.4;
         }
         .checkmark-list li:before {
           content: "✓";
@@ -1553,30 +1595,17 @@ function generateLetterViewerHTML(letterData) {
           left: 0;
           color: #28a745;
           font-weight: bold;
-          font-size: 16pt;
+          font-size: 13pt;
         }
         
         /* Footer */
         .footer { 
           text-align: center; 
-          font-size: 13pt; 
+          font-size: 10pt; 
           color: #666;
-          margin-top: 30px;
-          padding-top: 20px;
+          margin-top: 25px;
+          padding-top: 15px;
           border-top: 1px solid #ddd;
-        }
-        
-        /* Pulse animation for primary button */
-        @keyframes pulse {
-          0% {
-            box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7);
-          }
-          70% {
-            box-shadow: 0 0 0 10px rgba(40, 167, 69, 0);
-          }
-          100% {
-            box-shadow: 0 0 0 0 rgba(40, 167, 69, 0);
-          }
         }
         
         /* Print styles */
@@ -1584,49 +1613,128 @@ function generateLetterViewerHTML(letterData) {
           .actions { display: none; }
           body { padding-bottom: 0; background: white; }
           .container { box-shadow: none; }
+          .policy-table thead tr { position: static; }
+          .policy-table, .policy-table thead, .policy-table tbody, .policy-table tr { display: table; }
+          .policy-table td { display: table-cell; text-align: center; }
+          .policy-table td:before { display: none; }
         }
         
         /* Tablet styles */
         @media (min-width: 768px) {
           body {
             padding: 20px;
-            padding-bottom: 120px;
+            padding-bottom: 20px;
           }
           .container {
             max-width: 700px;
-            padding: 40px;
+            padding: 30px;
           }
           .logo {
-            width: 150px;
+            width: 120px;
           }
-          .date {
-            font-size: 18pt;
-          }
-          .subject {
-            font-size: 20pt;
-          }
-          .content {
+          .company-name {
             font-size: 16pt;
           }
-          .policy-table {
+          .date {
             font-size: 15pt;
           }
+          .subject {
+            font-size: 16pt;
+          }
+          .content {
+            font-size: 13pt;
+          }
           .qr-code {
-            width: 160px;
-            height: 160px;
+            width: 140px;
+            height: 140px;
+          }
+          .actions {
+            position: static;
+            text-align: center;
+            margin-top: 30px;
+          }
+          .btn {
+            display: inline-block;
+            margin: 0 10px;
+          }
+          .btn.print {
+            display: inline-block; /* Show print button on tablet */
+            background-color: #6c757d;
+            color: white;
+          }
+          .btn.print:hover {
+            background-color: #5a6268;
+          }
+          
+          /* Show normal table on tablet */
+          .policy-table {
+            display: table;
+            font-size: 12pt;
+          }
+          .policy-table thead,
+          .policy-table tbody,
+          .policy-table tr {
+            display: table-row-group;
+          }
+          .policy-table thead tr {
+            position: static;
+            display: table-row;
+          }
+          .policy-table tr {
+            display: table-row;
+            border: none;
+            margin: 0;
+            padding: 0;
+            background: transparent;
+          }
+          .policy-table th, .policy-table td {
+            display: table-cell;
+            border: 2px solid #0066cc;
+            padding: 10px 8px;
+            text-align: center;
+          }
+          .policy-table th {
+            background-color: #0066cc;
+            color: white;
+            font-weight: bold;
+          }
+          .policy-table td:before {
+            display: none;
           }
         }
         
         /* Desktop styles */
         @media (min-width: 1024px) {
           body {
-            padding-bottom: 0;
+            padding: 30px;
             background-color: #fff;
           }
           .container {
             max-width: 210mm;
-            padding: 50px;
-            margin: 20px auto;
+            padding: 40px;
+            margin: 0 auto;
+          }
+          .logo {
+            width: 130px;
+          }
+          .company-name {
+            font-size: 18pt;
+          }
+          .date {
+            font-size: 16pt;
+          }
+          .subject {
+            font-size: 18pt;
+          }
+          .content {
+            font-size: 14pt;
+          }
+          .policy-table {
+            font-size: 13pt;
+          }
+          .qr-code {
+            width: 150px;
+            height: 150px;
           }
           .actions { 
             position: fixed;
@@ -1645,28 +1753,22 @@ function generateLetterViewerHTML(letterData) {
             display: inline-block;
             width: auto;
             margin: 0 5px 5px 0;
-            padding: 12px 20px;
-            font-size: 14pt;
+            padding: 10px 18px;
+            font-size: 12pt;
           }
-          .btn.primary {
-            font-size: 16pt;
-            padding: 15px 25px;
-            margin-bottom: 5px;
-            animation: none;
-          }
-          .logo {
-            width: 120px;
+          .btn.print {
+            display: inline-block;
           }
         }
       </style>
     </head>
     <body>
       <div class="actions">
-        <a href="/api/download-pdf-unprotected/${letterData.id}" class="btn primary" target="_blank">
-          📥 Download Letter
+        <a href="/api/download-pdf-unprotected/${letterData.id}" class="btn" target="_blank" title="Download Letter">
+          📥
         </a>
-        <a href="javascript:window.print()" class="btn">
-          🖨️ Print
+        <a href="javascript:window.print()" class="btn print" title="Print">
+          🖨️
         </a>
       </div>
 
@@ -1701,10 +1803,10 @@ function generateLetterViewerHTML(letterData) {
           </thead>
           <tbody>
             <tr>
-              <td>${letterData.policyDetails.policyNo}</td>
-              <td>${letterData.policyDetails.frequency}</td>
-              <td>${letterData.policyDetails.premium}</td>
-              <td><strong>${letterData.policyDetails.arrearsAmount}</strong></td>
+              <td data-label="Policy No">${letterData.policyDetails.policyNo}</td>
+              <td data-label="Payment Frequency">${letterData.policyDetails.frequency}</td>
+              <td data-label="Premium Amount">${letterData.policyDetails.premium}</td>
+              <td data-label="Total Premium in Arrears"><strong>${letterData.policyDetails.arrearsAmount}</strong></td>
             </tr>
           </tbody>
         </table>
@@ -1774,6 +1876,15 @@ function generateLetterViewerHTML(letterData) {
 
         <div class="footer">
           <p><em>This is a computer generated statement and requires no signature</em></p>
+          
+          <!-- Inline download button as fallback -->
+          <div style="text-align: center; margin: 20px 0; padding: 20px; background: #f0f8ff; border-radius: 8px;">
+            <a href="/api/download-pdf-unprotected/${letterData.id}" 
+               style="display: inline-block; padding: 15px 30px; background: #0066cc; color: white; text-decoration: none; border-radius: 25px; font-weight: bold; font-size: 14pt;"
+               target="_blank">
+              📥 Download PDF Letter
+            </a>
+          </div>
         </div>
       </div>
     </body>
