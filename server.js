@@ -35,6 +35,40 @@ const getPythonPath = () => {
 
 const PYTHON_PATH = getPythonPath();
 
+// URL Mapping Storage Functions for nicl.ink short URLs
+function loadUrlMappings() {
+  try {
+    const data = fs.readFileSync('url_mappings.json', 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    console.log('[URL-MAPPINGS] No existing mappings file found, starting fresh');
+    return {};
+  }
+}
+
+function saveUrlMappings(mappings) {
+  try {
+    fs.writeFileSync('url_mappings.json', JSON.stringify(mappings, null, 2));
+    return true;
+  } catch (error) {
+    console.error('[URL-MAPPINGS] Error saving mappings:', error);
+    return false;
+  }
+}
+
+function generateShortId() {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < 6; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+function isExpired(mapping) {
+  return new Date() > new Date(mapping.expires);
+}
+
 const app = express();
 const port = 3001;
 
@@ -2416,6 +2450,67 @@ app.get('/api/status', (req, res) => {
   });
 });
 
+// Test endpoint for short URL system
+app.post('/api/test-short-url', (req, res) => {
+  try {
+    const { longUrl } = req.body;
+    
+    if (!longUrl) {
+      return res.status(400).json({
+        success: false,
+        message: 'Long URL is required'
+      });
+    }
+    
+    // Generate short ID
+    const shortId = generateShortId();
+    const mappings = loadUrlMappings();
+    
+    // Ensure unique ID
+    let attempts = 0;
+    let finalShortId = shortId;
+    while (mappings[finalShortId] && attempts < 10) {
+      finalShortId = generateShortId();
+      attempts++;
+    }
+    
+    // Create mapping
+    const mapping = {
+      url: longUrl,
+      created: new Date().toISOString(),
+      expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
+      clicks: 0,
+      active: true
+    };
+    
+    mappings[finalShortId] = mapping;
+    
+    if (saveUrlMappings(mappings)) {
+      const shortUrl = `https://nicl.ink/${finalShortId}`;
+      res.json({
+        success: true,
+        shortId: finalShortId,
+        shortUrl: shortUrl,
+        longUrl: longUrl,
+        expires: mapping.expires
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: 'Failed to save URL mapping'
+      });
+    }
+    
+  } catch (error) {
+    console.error('[TEST-SHORT-URL] Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+});
+
 // Set user email for notifications
 app.post('/api/set-user-email', (req, res) => {
   try {
@@ -2474,7 +2569,122 @@ app.get('/api/get-user-email', (req, res) => {
   }
 });
 
-// Serve React app for all non-API routes (except letter viewer)
+// Short URL redirect handler for nicl.ink
+app.get('/:shortId', (req, res) => {
+  const shortId = req.params.shortId;
+  
+  // Skip known paths to avoid conflicts
+  const skipPaths = ['health', 'api', 'letter', 'favicon.ico', 'robots.txt'];
+  if (skipPaths.some(path => shortId.startsWith(path))) {
+    return res.status(404).json({ error: 'Path not found' });
+  }
+  
+  // Validate short ID format (6 characters, lowercase + digits)
+  if (!/^[a-z0-9]{6}$/.test(shortId)) {
+    return res.status(404).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Invalid Link - NICL</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+          .error { color: #d32f2f; }
+        </style>
+      </head>
+      <body>
+        <h1 class="error">Invalid Link Format</h1>
+        <p>The link format is not valid.</p>
+        <p>Please check the link or contact NICL customer service.</p>
+      </body>
+      </html>
+    `);
+  }
+  
+  try {
+    const mappings = loadUrlMappings();
+    const mapping = mappings[shortId];
+    
+    if (!mapping) {
+      console.log(`[REDIRECT] Short ID not found: ${shortId}`);
+      return res.status(404).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Link Not Found - NICL</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+            .error { color: #d32f2f; }
+          </style>
+        </head>
+        <body>
+          <h1 class="error">Link Not Found</h1>
+          <p>The requested link could not be found.</p>
+          <p>Please check the link or contact NICL customer service.</p>
+        </body>
+        </html>
+      `);
+    }
+    
+    if (!mapping.active || isExpired(mapping)) {
+      console.log(`[REDIRECT] Short ID expired or inactive: ${shortId}`);
+      return res.status(410).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Link Expired - NICL</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+            .error { color: #d32f2f; }
+          </style>
+        </head>
+        <body>
+          <h1 class="error">Link Expired</h1>
+          <p>This link has expired and is no longer available.</p>
+          <p>Please contact NICL customer service for assistance.</p>
+        </body>
+        </html>
+      `);
+    }
+    
+    // Increment click count
+    mapping.clicks = (mapping.clicks || 0) + 1;
+    mapping.lastAccessed = new Date().toISOString();
+    
+    // Save updated mappings
+    if (saveUrlMappings(mappings)) {
+      console.log(`[REDIRECT] ${shortId} -> ${mapping.url} (clicks: ${mapping.clicks})`);
+    }
+    
+    // Redirect to the full URL
+    res.redirect(301, mapping.url);
+    
+  } catch (error) {
+    console.error(`[REDIRECT] Error processing short ID ${shortId}:`, error);
+    res.status(500).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>System Error - NICL</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+          .error { color: #d32f2f; }
+        </style>
+      </head>
+      <body>
+        <h1 class="error">System Error</h1>
+        <p>An error occurred while processing the link.</p>
+        <p>Please try again later or contact NICL customer service.</p>
+      </body>
+      </html>
+    `);
+  }
+});
+
+// Serve React app for all non-API routes (except letter viewer and short URLs)
 app.get('*', (req, res) => {
   // Letter URLs should be handled by the letter route above - don't interfere
   if (req.path.startsWith('/letter/')) {

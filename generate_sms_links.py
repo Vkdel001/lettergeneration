@@ -27,22 +27,54 @@ def generate_unique_id(policy_no, index, timestamp=None):
     return hashlib.sha256(data.encode()).hexdigest()[:16]
 
 def create_short_url(long_url):
-    """Create shortened URL using TinyURL API"""
+    """Create custom short URL using nicl.ink domain"""
+    import json
+    import random
+    import string
+    from datetime import datetime, timedelta
+    
+    # Generate unique 6-character short ID (lowercase + digits)
+    chars = string.ascii_lowercase + string.digits
+    short_id = ''.join(random.choice(chars) for _ in range(6))
+    
+    # Load existing mappings
     try:
-        response = requests.get(
-            f"https://tinyurl.com/api-create.php?url={requests.utils.quote(long_url)}",
-            timeout=10
-        )
-        if response.status_code == 200:
-            short_url = response.text.strip()
-            if short_url.startswith('http'):
-                return short_url
-        
-        print(f"[WARNING] TinyURL API failed, using original URL")
-        return long_url
+        with open('url_mappings.json', 'r') as f:
+            mappings = json.load(f)
+    except FileNotFoundError:
+        mappings = {}
+    
+    # Ensure unique ID (retry if collision)
+    attempts = 0
+    while short_id in mappings and attempts < 10:
+        short_id = ''.join(random.choice(chars) for _ in range(6))
+        attempts += 1
+    
+    if attempts >= 10:
+        print(f"[WARNING] Could not generate unique short ID after 10 attempts")
+        # Fallback to longer ID
+        short_id = ''.join(random.choice(chars) for _ in range(8))
+    
+    # Store mapping
+    mappings[short_id] = {
+        "url": long_url,
+        "created": datetime.now().isoformat(),
+        "expires": (datetime.now() + timedelta(days=30)).isoformat(),
+        "clicks": 0,
+        "active": True
+    }
+    
+    # Save mappings
+    try:
+        with open('url_mappings.json', 'w') as f:
+            json.dump(mappings, f, indent=2)
+        print(f"[SMS] Created short URL: https://nicl.ink/{short_id} -> {long_url}")
     except Exception as e:
-        print(f"[WARNING] URL shortening failed: {e}, using original URL")
+        print(f"[SMS] Error saving URL mapping: {e}")
+        # Fallback to original URL if storage fails
         return long_url
+    
+    return f"https://nicl.ink/{short_id}"
 
 def generate_qr_code_for_customer(policy_no, mobile_no, customer_name, nic):
     """Generate QR code for customer payment"""
@@ -216,7 +248,7 @@ def extract_letter_data(row, index, template_type):
         "nic": nic,
         "date": arrears_date_formatted,
         "address": address_lines,
-        "salutation": f"Dear {row.get('Owner 1 Title', '')} {row.get('Owner 1 Surname', '')}".strip().rstrip(',') + ",",
+        "salutation": f"Dear {customer_name},",
         "subject": subject,
         "letterType": letter_type,
         "bodyIntro": body_intro,
