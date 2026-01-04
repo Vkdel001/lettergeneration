@@ -2569,37 +2569,51 @@ app.get('/api/get-user-email', (req, res) => {
   }
 });
 
-// Short URL redirect handler for nicl.ink
-app.get('/:shortId', (req, res) => {
+// Short URL redirect handler for nicl.ink (MUST be after all API routes)
+app.get('/:shortId', (req, res, next) => {
   const shortId = req.params.shortId;
   
-  // Skip known paths to avoid conflicts
-  const skipPaths = ['health', 'api', 'letter', 'favicon.ico', 'robots.txt'];
+  // Skip ALL paths that should not be handled by short URL redirect
+  const skipPaths = [
+    'api',           // All API routes
+    'letter',        // Letter viewer routes
+    'health',        // Health check
+    'favicon.ico',   // Browser requests
+    'robots.txt',    // SEO files
+    'sitemap.xml',   // SEO files
+    'assets',        // Static assets
+    'static',        // Static files
+    'public',        // Public files
+    'dist',          // Built files
+    'node_modules',  // Dependencies
+    'src',           // Source files
+    'uploads',       // Upload directory
+    'output_',       // Output folders
+    'letter_links',  // SMS link data
+    'fonts',         // Font files
+    'logs',          // Log files
+    'temp_uploads'   // Temporary uploads
+  ];
+  
+  // Skip if path starts with any of the skip paths
   if (skipPaths.some(path => shortId.startsWith(path))) {
-    return res.status(404).json({ error: 'Path not found' });
+    console.log(`[REDIRECT] Skipping path: ${shortId} (matches skip pattern)`);
+    return next(); // Pass to next route handler
   }
   
-  // Validate short ID format (6 characters, lowercase + digits)
-  if (!/^[a-z0-9]{6}$/.test(shortId)) {
-    return res.status(404).send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Invalid Link - NICL</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-          body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-          .error { color: #d32f2f; }
-        </style>
-      </head>
-      <body>
-        <h1 class="error">Invalid Link Format</h1>
-        <p>The link format is not valid.</p>
-        <p>Please check the link or contact NICL customer service.</p>
-      </body>
-      </html>
-    `);
+  // Skip if path contains file extensions
+  if (shortId.includes('.')) {
+    console.log(`[REDIRECT] Skipping file: ${shortId} (contains extension)`);
+    return next(); // Pass to next route handler
   }
+  
+  // Only handle if this looks like a short ID (6 characters, lowercase + digits)
+  if (!/^[a-z0-9]{6}$/.test(shortId)) {
+    console.log(`[REDIRECT] Skipping invalid short ID format: ${shortId}`);
+    return next(); // Pass to next route handler
+  }
+  
+  console.log(`[REDIRECT] Processing short ID: ${shortId}`);
   
   try {
     const mappings = loadUrlMappings();
@@ -2655,32 +2669,17 @@ app.get('/:shortId', (req, res) => {
     
     // Save updated mappings
     if (saveUrlMappings(mappings)) {
-      console.log(`[REDIRECT] ${shortId} -> ${mapping.url} (clicks: ${mapping.clicks})`);
+      console.log(`[REDIRECT] SUCCESS: ${shortId} -> ${mapping.url} (clicks: ${mapping.clicks})`);
+    } else {
+      console.warn(`[REDIRECT] WARNING: Could not save click count for ${shortId}`);
     }
     
     // Redirect to the full URL
     res.redirect(301, mapping.url);
     
   } catch (error) {
-    console.error(`[REDIRECT] Error processing short ID ${shortId}:`, error);
-    res.status(500).send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>System Error - NICL</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-          body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-          .error { color: #d32f2f; }
-        </style>
-      </head>
-      <body>
-        <h1 class="error">System Error</h1>
-        <p>An error occurred while processing the link.</p>
-        <p>Please try again later or contact NICL customer service.</p>
-      </body>
-      </html>
-    `);
+    console.error(`[REDIRECT] ERROR processing short ID ${shortId}:`, error);
+    return next(); // Pass to next route handler on error
   }
 });
 
