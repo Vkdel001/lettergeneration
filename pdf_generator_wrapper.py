@@ -175,6 +175,20 @@ def main():
         print("Template executed successfully")
         print(f"STDOUT: {result.stdout}")
         
+        # ENHANCEMENT: Save Excel file copy BEFORE marking as processed (for SMS generation)
+        try:
+            if os.path.exists(expected_filename):
+                folder_name = os.path.basename(args.output)
+                excel_copy_path = os.path.join(args.output, f"{folder_name}_source.xlsx")
+                shutil.copy2(expected_filename, excel_copy_path)
+                file_size = os.path.getsize(excel_copy_path)
+                print(f"[SMS-PREP] Saved Excel file copy for SMS generation: {excel_copy_path}")
+                print(f"[SMS-PREP] File size: {file_size:,} bytes")
+            else:
+                print(f"[SMS-PREP] Warning: {expected_filename} not found for SMS copy")
+        except Exception as e:
+            print(f"[SMS-PREP] Warning: Could not save Excel file copy: {e}")
+        
         # Mark input file as processed AFTER successful execution
         try:
             if os.path.exists(expected_filename):
@@ -249,24 +263,8 @@ def main():
         except Exception as e:
             print(f"[EMAIL] Warning: Could not send completion notification: {e}")
         
-        # ENHANCEMENT: Save a copy of the Excel file in the output folder for future SMS link generation
-        try:
-            if os.path.exists(expected_filename):
-                # Create a folder-specific Excel file for SMS link generation
-                folder_name = os.path.basename(args.output)
-                excel_copy_path = os.path.join(args.output, f"{folder_name}_source.xlsx")
-                shutil.copy2(expected_filename, excel_copy_path)
-                print(f"[SMS-PREP] Saved Excel file copy for SMS generation: {excel_copy_path}")
-            elif os.path.exists(args.input):
-                # Use the original input file if expected filename doesn't exist
-                folder_name = os.path.basename(args.output)
-                excel_copy_path = os.path.join(args.output, f"{folder_name}_source.xlsx")
-                shutil.copy2(args.input, excel_copy_path)
-                print(f"[SMS-PREP] Saved original Excel file copy for SMS generation: {excel_copy_path}")
-            else:
-                print("[SMS-PREP] Warning: Could not find Excel file to copy for SMS generation")
-        except Exception as e:
-            print(f"[SMS-PREP] Warning: Could not save Excel file copy for SMS generation: {e}")
+        # Excel file copy moved earlier in the process (before file is marked as processed)
+        # This ensures the file is available for SMS link generation
         
     except subprocess.TimeoutExpired:
         print(f"Template execution timed out ({timeout_seconds/60:.0f} minutes)", file=sys.stderr)
