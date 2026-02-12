@@ -929,8 +929,9 @@ for index, row in df.iterrows():
                 reader = PdfReader(input_file)
                 writer = PdfWriter()
                 
-                for page_num in range(reader.getNumPages()):
-                    writer.addPage(reader.getPage(page_num))
+                # PyPDF2 3.x uses len(reader.pages) instead of getNumPages()
+                for page_num in range(len(reader.pages)):
+                    writer.add_page(reader.pages[page_num])
                 
                 writer.encrypt(password)
                 
