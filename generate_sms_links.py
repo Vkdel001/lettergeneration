@@ -268,9 +268,16 @@ def save_letter_json(unique_id, letter_data, output_folder):
     letter_links_dir = os.path.join("letter_links", output_folder)
     os.makedirs(letter_links_dir, exist_ok=True)
     
+    # Generate NIC hash for password verification (SHA256)
+    nic_clean = str(letter_data.get('nic', '')).replace(' ', '').upper()
+    nic_hash = hashlib.sha256(nic_clean.encode()).hexdigest() if nic_clean else None
+    
     # Add metadata
     letter_data.update({
         "id": unique_id,
+        "nicHash": nic_hash,  # Store hash only, never plain text
+        "accessAttempts": [],  # Track failed login attempts
+        "lockedUntil": None,   # Lockout timestamp
         "createdAt": datetime.now().isoformat(),
         "expiresAt": (datetime.now() + timedelta(days=30)).isoformat(),
         "accessCount": 0,
@@ -447,7 +454,7 @@ def generate_sms_links_for_folder(output_folder, template_type, base_url="https:
             customer_surname = row.get('Owner 1 Surname', '')
             name_for_sms = f"{customer_title} {customer_surname}".strip() if customer_surname else letter_data['customerName']
             
-            sms_text = f"Dear {name_for_sms}, your NICL arrears notice is ready. View online: {short_url} Valid for 30 days."
+            sms_text = f"Dear {name_for_sms}, your NICL arrears notice is ready. View: {short_url} Password: Your National ID (no spaces) Valid 30 days | Help: 602-3315"
             
             # Prepare SMS data
             sms_data.append({

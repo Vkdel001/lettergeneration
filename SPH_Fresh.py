@@ -710,28 +710,230 @@ for index, row in df.iterrows():
     c.save()
     print(f"✅ Unprotected PDF saved: {unprotected_pdf_filename}")
 
-    # Create password-protected version using customer's NIC
+    # Create password-protected version with NICL logo using customer's NIC
     try:
         if nic and str(nic).strip():
             password = str(nic).strip()
             
-            # Read the unprotected PDF
-            with open(unprotected_pdf_filename, 'rb') as input_file:
+            # Create a new PDF with NICL logo for protected version
+            c_protected = canvas.Canvas(protected_pdf_filename, pagesize=A4)
+            
+            # Add NICL logo at the top center (only for protected PDF)
+            if os.path.exists("NICLOGO.jpg"):
+                try:
+                    nic_logo = ImageReader("NICLOGO.jpg")
+                    logo_width = 100
+                    logo_height = logo_width * (nic_logo.getSize()[1] / nic_logo.getSize()[0])
+                    logo_x = (width - logo_width) / 2  # Center horizontally
+                    logo_y = height - margin - logo_height - 10  # Top position with 10px spacing
+                    c_protected.drawImage(nic_logo, logo_x, logo_y, width=logo_width, height=logo_height)
+                except Exception as logo_error:
+                    print(f"⚠️ Warning: Could not add NICL logo: {str(logo_error)}")
+            else:
+                print(f"⚠️ Warning: NICLOGO.jpg not found - skipping logo for protected PDF")
+            
+            # Reset y_pos for protected PDF content (same as unprotected)
+            y_pos_protected = height - margin - 80
+            date_top_y_protected = y_pos_protected
+
+            # Add arrears processing date from Excel file
+            date_para_protected = Paragraph(f"{arrears_date_formatted}", styles['SalutationText'])
+            date_para_protected.wrapOn(c_protected, width - margin, height)
+            date_para_protected.drawOn(c_protected, margin, y_pos_protected - date_para_protected.height)
+            y_pos_protected -= date_para_protected.height + 12
+
+            # Add recipient address
+            for line in address_lines:
+                addr_para_protected = Paragraph(line.upper(), styles['SalutationText'])
+                addr_para_protected.wrapOn(c_protected, width - 2 * margin, height)
+                addr_para_protected.drawOn(c_protected, margin, y_pos_protected - addr_para_protected.height)
+                y_pos_protected -= addr_para_protected.height + 6
+            y_pos_protected -= 8
+
+            # Add salutation
+            salutation_protected = Paragraph(salutation_text, styles['BodyText'])
+            salutation_protected.wrapOn(c_protected, width - 2 * margin, height)
+            salutation_protected.drawOn(c_protected, margin, y_pos_protected - salutation_protected.height)
+            y_pos_protected -= salutation_protected.height + 4
+
+            # Add subject line
+            subject_protected = Paragraph("RE: ARREARS ON YOUR LIFE INSURANCE POLICY", styles['BoldText'])
+            subject_protected.wrapOn(c_protected, width - 2 * margin, height)
+            subject_protected.drawOn(c_protected, margin, y_pos_protected - subject_protected.height)
+            y_pos_protected -= subject_protected.height + 4
+
+            # Add intro paragraph
+            intro_protected = Paragraph(intro_text, styles['BodyText'])
+            intro_protected.wrapOn(c_protected, width - 2 * margin, height)
+            intro_protected.drawOn(c_protected, margin, y_pos_protected - intro_protected.height)
+            y_pos_protected -= intro_protected.height + 8
+
+            # Add table
+            table_protected = Table(data, colWidths=[120, 120, 125, 130])
+            table_protected.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, -1), 'Cambria'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('ROWHEIGHT', (0, 0), (-1, -1), 20),
+                ('LEFTPADDING', (0, 0), (-1, -1), 3),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+                ('TEXTWRAP', (0, 0), (-1, -1), 'CJK'),
+            ]))
+            table_width_protected, table_height_protected = table_protected.wrap(width - 2 * margin, 0)
+            table_protected.drawOn(c_protected, margin, y_pos_protected - table_height_protected)
+            y_pos_protected -= table_height_protected + 10
+
+            # Add all body paragraphs (para1 through para11)
+            para1_protected = Paragraph(text1, styles['BodyText'])
+            para1_protected.wrapOn(c_protected, width - 2 * margin, height)
+            para1_protected.drawOn(c_protected, margin, y_pos_protected - para1_protected.height)
+            y_pos_protected -= para1_protected.height + 4
+
+            # Checkmark points
+            para2_protected = Paragraph(text2, styles['BodyText'])
+            para2_protected.wrapOn(c_protected, width - 2 * margin - 25, height)
+            draw_checkmark(c_protected, margin + 10, y_pos_protected - 8, 8)
+            para2_protected.drawOn(c_protected, margin + 25, y_pos_protected - para2_protected.height)
+            y_pos_protected -= para2_protected.height + 3
+
+            para3_protected = Paragraph(text3, styles['BodyText'])
+            para3_protected.wrapOn(c_protected, width - 2 * margin - 25, height)
+            draw_checkmark(c_protected, margin + 10, y_pos_protected - 8, 8)
+            para3_protected.drawOn(c_protected, margin + 25, y_pos_protected - para3_protected.height)
+            y_pos_protected -= para3_protected.height + 3
+
+            para4_protected = Paragraph(text4, styles['BodyText'])
+            para4_protected.wrapOn(c_protected, width - 2 * margin - 25, height)
+            draw_checkmark(c_protected, margin + 10, y_pos_protected - 8, 8)
+            para4_protected.drawOn(c_protected, margin + 25, y_pos_protected - para4_protected.height)
+            y_pos_protected -= para4_protected.height + 8
+
+            para6_protected = Paragraph(text6, styles['BodyText'])
+            para6_protected.wrapOn(c_protected, width - 2 * margin, height)
+            para6_protected.drawOn(c_protected, margin, y_pos_protected - para6_protected.height)
+            y_pos_protected -= para6_protected.height + 3
+
+            para7_protected = Paragraph(text7, styles['BodyText'])
+            para7_protected.wrapOn(c_protected, width - 2 * margin - 10, height)
+            para7_protected.drawOn(c_protected, margin + 10, y_pos_protected - para7_protected.height)
+            y_pos_protected -= para7_protected.height + 2
+
+            para8_protected = Paragraph(text8, styles['BodyText'])
+            para8_protected.wrapOn(c_protected, width - 2 * margin - 10, height)
+            para8_protected.drawOn(c_protected, margin + 10, y_pos_protected - para8_protected.height)
+            y_pos_protected -= para8_protected.height + 2
+
+            para9_protected = Paragraph(text9, styles['BodyText'])
+            para9_protected.wrapOn(c_protected, width - 2 * margin - 10, height)
+            para9_protected.drawOn(c_protected, margin + 10, y_pos_protected - para9_protected.height)
+            y_pos_protected -= para9_protected.height + 6
+
+            para_payment_facilities_protected = Paragraph(text_payment_facilities, styles['BodyText'])
+            para_payment_facilities_protected.wrapOn(c_protected, width - 2 * margin, height)
+            para_payment_facilities_protected.drawOn(c_protected, margin, y_pos_protected - para_payment_facilities_protected.height)
+            y_pos_protected -= para_payment_facilities_protected.height + 10
+
+            para10_protected = Paragraph(text10, styles['BoldText'])
+            para10_protected.wrapOn(c_protected, width - 2 * margin, height)
+            para10_protected.drawOn(c_protected, margin, y_pos_protected - para10_protected.height)
+            y_pos_protected -= para10_protected.height + 3
+
+            para11_protected = Paragraph(text11, styles['BodyText'])
+            para11_protected.wrapOn(c_protected, width - 2 * margin, height)
+            para11_protected.drawOn(c_protected, margin, y_pos_protected - para11_protected.height)
+            y_pos_protected -= para11_protected.height + 10
+
+            # Add QR code section with logos
+            if os.path.exists(qr_filename):
+                page_center_x = width / 2
+                
+                if os.path.exists("maucas2.jpeg"):
+                    img = ImageReader("maucas2.jpeg")
+                    img_width = 110
+                    img_height = img_width * (img.getSize()[1] / img.getSize()[0])
+                    logo_x = page_center_x - (img_width / 2)
+                    c_protected.drawImage(img, logo_x, y_pos_protected - img_height, width=img_width, height=img_height)
+                    y_pos_protected -= img_height + 2
+                elif os.path.exists("maucas.jpeg"):
+                    img = ImageReader("maucas.jpeg")
+                    img_width = 110
+                    img_height = img_width * (img.getSize()[1] / img.getSize()[0])
+                    logo_x = page_center_x - (img_width / 2)
+                    c_protected.drawImage(img, logo_x, y_pos_protected - img_height, width=img_width, height=img_height)
+                    y_pos_protected -= img_height + 2
+                
+                qr_size = 100
+                qr_x = page_center_x - (qr_size / 2)
+                c_protected.drawImage(qr_filename, qr_x, y_pos_protected - qr_size, width=qr_size, height=qr_size)
+                y_pos_protected -= qr_size + 2
+                
+                if os.path.exists("zwennPay.jpg"):
+                    zwenn_img = ImageReader("zwennPay.jpg")
+                    zwenn_width = 50
+                    zwenn_height = zwenn_width * (zwenn_img.getSize()[1] / zwenn_img.getSize()[0])
+                    zwenn_x = page_center_x - (zwenn_width / 2)
+                    c_protected.drawImage(zwenn_img, zwenn_x, y_pos_protected - zwenn_height, width=zwenn_width, height=zwenn_height)
+                    y_pos_protected -= zwenn_height + 4
+
+            # Add footer section
+            footer_start_y_protected = y_pos_protected - 2
+            
+            footer1_protected = Paragraph(
+                "<i>If you have already settled this amount, please accept our thanks and disregard this reminder.</i>",
+                styles['BodyText']
+            )
+            footer1_protected.wrapOn(c_protected, width - 2 * margin, height)
+            footer1_protected.drawOn(c_protected, margin, footer_start_y_protected - footer1_protected.height)
+
+            tagline_y_pos_protected = footer_start_y_protected - footer1_protected.height - 6
+            tagline_protected = Paragraph(
+                "We appreciate your commitment for protection and financial wellbeing<br/><font name='Cambria-Bold'>NIC - Serving you, Serving the Nation</font>",
+                styles['BodyText']
+            )
+            tagline_protected.wrapOn(c_protected, width - 2 * margin, height)
+            tagline_protected.drawOn(c_protected, margin, tagline_y_pos_protected - tagline_protected.height)
+            
+            assignee_y_pos_protected = tagline_y_pos_protected - tagline_protected.height - 8
+            if assignee_surname and pd.notna(assignee_surname) and str(assignee_surname).strip():
+                assignee_text = str(assignee_surname).strip()
+                assignee_para_protected = Paragraph(f"{assignee_text}", styles['BodyText'])
+                assignee_para_protected.wrapOn(c_protected, width - 2 * margin, height)
+                assignee_para_protected.drawOn(c_protected, margin, assignee_y_pos_protected - assignee_para_protected.height)
+                assignee_y_pos_protected -= assignee_para_protected.height + 8
+            
+            computer_generated_y_pos_protected = assignee_y_pos_protected - 17
+            computer_generated_protected = Paragraph(
+                "This is a computer generated statement and requires no signature",
+                computer_generated_style
+            )
+            computer_generated_protected.wrapOn(c_protected, width - 2 * margin, height)
+            computer_generated_protected.drawOn(c_protected, margin, computer_generated_y_pos_protected - computer_generated_protected.height)
+
+            # Save the protected PDF with logo
+            c_protected.save()
+            
+            # Now encrypt the protected PDF with NIC password
+            temp_protected = protected_pdf_filename + ".temp"
+            os.rename(protected_pdf_filename, temp_protected)
+            
+            with open(temp_protected, 'rb') as input_file:
                 reader = PdfFileReader(input_file)
                 writer = PdfFileWriter()
                 
-                # Copy all pages
                 for page_num in range(reader.getNumPages()):
                     writer.addPage(reader.getPage(page_num))
                 
-                # Encrypt with NIC as password
                 writer.encrypt(password)
                 
-                # Write password-protected PDF to protected folder
                 with open(protected_pdf_filename, 'wb') as output_file:
                     writer.write(output_file)
             
-            print(f"🔒 Protected PDF saved with NIC password: {protected_pdf_filename}")
+            # Clean up temp file
+            os.remove(temp_protected)
+            
+            print(f"🔒 Protected PDF saved with NICL logo and NIC password: {protected_pdf_filename}")
         else:
             # If no NIC, copy unprotected version to protected folder
             import shutil

@@ -4,6 +4,7 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import cors from 'cors';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import AuthService from './auth_service.js';
 
@@ -80,6 +81,128 @@ app.use(cors());
 // Increase payload size limits for large Excel files (50MB)
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// ============================================================================
+// SESSION MANAGEMENT FOR LETTER VIEWER NIC AUTHENTICATION
+// ============================================================================
+
+// In-memory session storage (use Redis in production for scalability)
+const letterSessions = new Map();
+
+// Session configuration
+const SESSION_DURATION = null; // null = session cookie (expires on browser close)
+const MAX_FAILED_ATTEMPTS = 10;
+const LOCKOUT_DURATION = 30 * 60 * 1000; // 30 minutes in milliseconds
+
+// Helper function to generate session ID
+function generateSessionId() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+// Helper function to validate NIC
+function validateNIC(inputNIC, storedNICHash) {
+  // Remove spaces, convert to uppercase
+  const cleanNIC = inputNIC.replace(/\s/g, '').toUpperCase();
+  
+  // Generate hash
+  const inputHash = crypto.createHash('sha256').update(cleanNIC).digest('hex');
+  
+  // Compare hashes
+  return inputHash === storedNICHash;
+}
+
+// Helper function to check lockout status
+function checkLockout(letterData) {
+  if (letterData.lockedUntil) {
+    const now = new Date();
+    const lockoutEnd = new Date(letterData.lockedUntil);
+    
+    if (now < lockoutEnd) {
+      const minutesRemaining = Math.ceil((lockoutEnd - now) / 60000);
+      return {
+        locked: true,
+        minutesRemaining: minutesRemaining
+      };
+    } else {
+      // Lockout expired, reset
+      letterData.lockedUntil = null;
+      letterData.accessAttempts = [];
+      return { locked: false };
+    }
+  }
+  return { locked: false };
+}
+
+// Helper function to record failed attempt
+function recordFailedAttempt(letterData, letterFile, ipAddress, userAgent) {
+  if (!letterData.accessAttempts) {
+    letterData.accessAttempts = [];
+  }
+  
+  letterData.accessAttempts.push({
+    timestamp: new Date().toISOString(),
+    success: false,
+    ipAddress: ipAddress,
+    userAgent: userAgent
+  });
+  
+  // Check if lockout threshold reached
+  if (letterData.accessAttempts.length >= MAX_FAILED_ATTEMPTS) {
+    letterData.lockedUntil = new Date(Date.now() + LOCKOUT_DURATION).toISOString();
+    console.log(`[AUTH] Letter ${letterData.id} locked out after ${MAX_FAILED_ATTEMPTS} failed attempts`);
+  }
+  
+  // Save updated letter data
+  fs.writeFileSync(letterFile, JSON.stringify(letterData, null, 2));
+}
+
+// Helper function to create session
+function createSession(uniqueId, req) {
+  const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
+  letterSessions.set(sessionId, {
+    uniqueId: uniqueId,
+    authenticated: true,
+    createdAt: new Date().toISOString(),
+    ipAddress: req.ip || req.connection.remoteAddress,
+    userAgent: req.get('user-agent')
+  });
+  
+  console.log(`[AUTH] Session created for letter ${uniqueId}: ${sessionId}`);
+  return sessionId;
+}
+
+// Helper function to validate session
+function validateSession(sessionId, uniqueId) {
+  if (!sessionId) return false;
+  
+  const session = letterSessions.get(sessionId);
+  if (!session) return false;
+  
+  // Check if session is for the correct letter
+  if (session.uniqueId !== uniqueId) return false;
+  
+  // Session is valid
+  return true;
+}
+
+// Cleanup expired sessions periodically (every 1 hour)
+setInterval(() => {
+  const now = Date.now();
+  const oneHourAgo = now - (60 * 60 * 1000);
+  
+  for (const [sessionId, session] of letterSessions.entries()) {
+    const sessionTime = new Date(session.createdAt).getTime();
+    if (sessionTime < oneHourAgo) {
+      letterSessions.delete(sessionId);
+      console.log(`[AUTH] Cleaned up expired session: ${sessionId}`);
+    }
+  }
+}, 60 * 60 * 1000); // Run every hour
+
+// ============================================================================
+// END SESSION MANAGEMENT
+// ============================================================================
 
 // Configure multer for file uploads with size limits
 const storage = multer.diskStorage({
@@ -1262,9 +1385,144 @@ app.get('/api/download-sms-file/:outputFolder', (req, res) => {
 });
 
 // API endpoint to view individual letter (customer-facing)
+// NEW: Password verification endpoint
+app.post('/api/verify-letter-access', (req, res) => {
+  try {
+    const { uniqueId, nic } = req.body;
+    
+    if (!uniqueId || !nic) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields'
+      });
+    }
+    
+    // Find the letter data file
+    const letterLinksDir = 'letter_links';
+    let letterData = null;
+    let letterFile = null;
+
+    if (fs.existsSync(letterLinksDir)) {
+      const outputFolders = fs.readdirSync(letterLinksDir);
+      
+      for (const folder of outputFolders) {
+        const folderPath = path.join(letterLinksDir, folder);
+        if (fs.statSync(folderPath).isDirectory()) {
+          const jsonFile = path.join(folderPath, `${uniqueId}.json`);
+          if (fs.existsSync(jsonFile)) {
+            letterFile = jsonFile;
+            letterData = JSON.parse(fs.readFileSync(jsonFile, 'utf8'));
+            break;
+          }
+        }
+      }
+    }
+
+    if (!letterData) {
+      return res.status(404).json({
+        success: false,
+        message: 'Invalid access link. Please contact NICL at 602-3315.'
+      });
+    }
+
+    // Check if letter has expired
+    const now = new Date();
+    const expiresAt = new Date(letterData.expiresAt);
+    
+    if (now > expiresAt) {
+      return res.status(410).json({
+        success: false,
+        message: 'This link has expired. Please contact NICL at 602-3315.'
+      });
+    }
+
+    // Check lockout status
+    const lockoutStatus = checkLockout(letterData);
+    if (lockoutStatus.locked) {
+      return res.status(429).json({
+        success: false,
+        message: `Too many failed attempts. Please try again in ${lockoutStatus.minutesRemaining} minutes.`,
+        lockedUntil: letterData.lockedUntil,
+        minutesRemaining: lockoutStatus.minutesRemaining
+      });
+    }
+
+    // Validate NIC
+    if (!letterData.nicHash) {
+      console.error(`[AUTH] No NIC hash found for letter ${uniqueId}`);
+      return res.status(500).json({
+        success: false,
+        message: 'System error. Please contact NICL at 602-3315.'
+      });
+    }
+
+    const isValid = validateNIC(nic, letterData.nicHash);
+    
+    if (isValid) {
+      // NIC is correct - create session
+      const sessionId = createSession(uniqueId, req);
+      
+      // Reset failed attempts
+      letterData.accessAttempts = [];
+      letterData.lockedUntil = null;
+      fs.writeFileSync(letterFile, JSON.stringify(letterData, null, 2));
+      
+      console.log(`[AUTH] Successful authentication for letter ${uniqueId}`);
+      
+      return res.json({
+        success: true,
+        sessionId: sessionId,
+        message: 'Access granted'
+      });
+    } else {
+      // NIC is incorrect - record failed attempt
+      const ipAddress = req.ip || req.connection.remoteAddress;
+      const userAgent = req.get('user-agent');
+      
+      recordFailedAttempt(letterData, letterFile, ipAddress, userAgent);
+      
+      const attemptsRemaining = MAX_FAILED_ATTEMPTS - (letterData.accessAttempts?.length || 0);
+      
+      console.log(`[AUTH] Failed authentication for letter ${uniqueId}. Attempts remaining: ${attemptsRemaining}`);
+      
+      return res.status(401).json({
+        success: false,
+        message: `Invalid National ID. ${attemptsRemaining} attempts remaining.`,
+        attemptsRemaining: attemptsRemaining
+      });
+    }
+
+  } catch (error) {
+    console.error('[ERROR] Password verification failed:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'System error. Please try again later.'
+    });
+  }
+});
+
+// API endpoint to view individual letter (customer-facing)
 app.get('/letter/:uniqueId', (req, res) => {
   try {
     const { uniqueId } = req.params;
+    
+    // Check for session cookie FIRST - do NOT load letter data yet
+    const cookies = req.headers.cookie || '';
+    const sessionMatch = cookies.match(/nicl_letter_session=([^;]+)/);
+    const sessionId = sessionMatch ? sessionMatch[1] : null;
+    
+    // Validate session
+    const hasValidSession = validateSession(sessionId, uniqueId);
+    
+    if (!hasValidSession) {
+      // No valid session - show password entry page
+      // IMPORTANT: Do NOT load letter data, do NOT pass customer info
+      console.log(`[AUTH] No valid session for letter ${uniqueId}, showing password page`);
+      return res.send(generatePasswordEntryHTML(uniqueId));
+    }
+    
+    // Valid session - NOW load letter data and show viewer
+    console.log(`[AUTH] Valid session for letter ${uniqueId}, loading letter`);
     
     // Find the letter data file
     const letterLinksDir = 'letter_links';
@@ -1302,8 +1560,8 @@ app.get('/letter/:uniqueId', (req, res) => {
         </head>
         <body>
           <h1 class="error">Letter Not Found</h1>
-          <p>The requested letter could not be found or may have expired.</p>
-          <p>Please contact NICL customer service for assistance.</p>
+          <p>The requested letter could not be found.</p>
+          <p>Please contact NICL customer service at 602-3315.</p>
         </body>
         </html>
       `);
@@ -1328,7 +1586,7 @@ app.get('/letter/:uniqueId', (req, res) => {
         <body>
           <h1 class="error">Letter Expired</h1>
           <p>This letter has expired and is no longer available.</p>
-          <p>Please contact NICL customer service for assistance.</p>
+          <p>Please contact NICL customer service at 602-3315.</p>
         </body>
         </html>
       `);
@@ -1350,7 +1608,7 @@ app.get('/letter/:uniqueId', (req, res) => {
         <body>
           <h1 class="error">Access Limit Exceeded</h1>
           <p>This letter has been accessed too many times and is no longer available.</p>
-          <p>Please contact NICL customer service for assistance.</p>
+          <p>Please contact NICL customer service at 602-3315.</p>
         </body>
         </html>
       `);
@@ -1380,12 +1638,260 @@ app.get('/letter/:uniqueId', (req, res) => {
       <body>
         <h1 class="error">System Error</h1>
         <p>An error occurred while loading the letter.</p>
-        <p>Please try again later or contact NICL customer service.</p>
+        <p>Please try again later or contact NICL customer service at 602-3315.</p>
       </body>
       </html>
     `);
   }
 });
+
+// Function to generate password entry HTML
+function generatePasswordEntryHTML(uniqueId, errorMessage = null, attemptsRemaining = null) {
+  const errorHtml = errorMessage ? `
+    <div class="error-message">
+      <p>❌ ${errorMessage}</p>
+      ${attemptsRemaining !== null ? `<p>${attemptsRemaining} attempts remaining</p>` : ''}
+    </div>
+  ` : '';
+
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>NICL - Secure Access</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+          font-family: 'Cambria', 'Times New Roman', serif; 
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 20px;
+        }
+        .container {
+          background: white;
+          border-radius: 20px;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+          max-width: 500px;
+          width: 100%;
+          padding: 40px;
+          text-align: center;
+        }
+        .logo {
+          width: 120px;
+          height: auto;
+          margin-bottom: 20px;
+        }
+        h1 {
+          color: #333;
+          font-size: 24px;
+          margin-bottom: 10px;
+        }
+        .lock-icon {
+          font-size: 48px;
+          margin-bottom: 20px;
+        }
+        .greeting {
+          color: #666;
+          font-size: 18px;
+          margin-bottom: 10px;
+          font-weight: bold;
+        }
+        .instruction {
+          color: #666;
+          font-size: 14px;
+          margin-bottom: 30px;
+          line-height: 1.6;
+        }
+        .form-group {
+          margin-bottom: 20px;
+          text-align: left;
+        }
+        label {
+          display: block;
+          color: #333;
+          font-weight: bold;
+          margin-bottom: 8px;
+          font-size: 14px;
+        }
+        input[type="text"] {
+          width: 100%;
+          padding: 15px;
+          border: 2px solid #ddd;
+          border-radius: 10px;
+          font-size: 16px;
+          font-family: monospace;
+          transition: border-color 0.3s;
+        }
+        input[type="text"]:focus {
+          outline: none;
+          border-color: #667eea;
+        }
+        .example {
+          color: #999;
+          font-size: 12px;
+          margin-top: 5px;
+          font-style: italic;
+        }
+        button {
+          width: 100%;
+          padding: 15px;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          border: none;
+          border-radius: 10px;
+          font-size: 16px;
+          font-weight: bold;
+          cursor: pointer;
+          transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+        button:active {
+          transform: translateY(0);
+        }
+        .error-message {
+          background: #fee;
+          border: 2px solid #fcc;
+          border-radius: 10px;
+          padding: 15px;
+          margin-bottom: 20px;
+          color: #c33;
+        }
+        .error-message p {
+          margin: 5px 0;
+        }
+        .help {
+          margin-top: 20px;
+          padding-top: 20px;
+          border-top: 1px solid #eee;
+          color: #666;
+          font-size: 13px;
+        }
+        .help-icon {
+          margin-right: 5px;
+        }
+        @media (max-width: 600px) {
+          .container {
+            padding: 30px 20px;
+          }
+          h1 {
+            font-size: 20px;
+          }
+          .greeting {
+            font-size: 16px;
+          }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <img src="/api/logo" alt="NICL Logo" class="logo" onerror="this.style.display='none'" />
+        
+        <div class="lock-icon">🔒</div>
+        
+        <h1>Secure Access Required</h1>
+        
+        <p class="greeting">Dear Valued Customer,</p>
+        
+        <p class="instruction">
+          To access the details, please provide your National ID number as password.
+        </p>
+        
+        ${errorHtml}
+        
+        <form id="nicForm" onsubmit="return handleSubmit(event)">
+          <div class="form-group">
+            <label for="nic">Enter Your National ID (No spaces):</label>
+            <input 
+              type="text" 
+              id="nic" 
+              name="nic" 
+              placeholder="A1234567890123" 
+              required 
+              autocomplete="off"
+              pattern="[A-Za-z0-9]+"
+              title="Please enter your National ID without spaces"
+            />
+            <div class="example">Example: A1234567890123</div>
+          </div>
+          
+          <button type="submit" id="submitBtn">
+            Access Document
+          </button>
+        </form>
+        
+        <div class="help">
+          <p><span class="help-icon">ℹ️</span> Your National ID is required for security</p>
+          <p><span class="help-icon">📞</span> Need help? Call 602-3315</p>
+        </div>
+      </div>
+      
+      <script>
+        async function handleSubmit(event) {
+          event.preventDefault();
+          
+          const submitBtn = document.getElementById('submitBtn');
+          const nicInput = document.getElementById('nic');
+          const nic = nicInput.value.trim();
+          
+          if (!nic) {
+            alert('Please enter your National ID');
+            return false;
+          }
+          
+          // Disable button and show loading
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Verifying...';
+          
+          try {
+            const response = await fetch('/api/verify-letter-access', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                uniqueId: '${uniqueId}',
+                nic: nic
+              })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+              // Set session cookie
+              document.cookie = \`nicl_letter_session=\${result.sessionId}; path=/; SameSite=Strict\`;
+              
+              // Redirect to letter viewer
+              window.location.href = '/letter/${uniqueId}';
+            } else {
+              // Show error and re-enable form
+              alert(result.message || 'Invalid National ID. Please try again.');
+              submitBtn.disabled = false;
+              submitBtn.textContent = 'Access Document';
+              nicInput.value = '';
+              nicInput.focus();
+            }
+          } catch (error) {
+            console.error('Error:', error);
+            alert('System error. Please try again later.');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Access Document';
+          }
+          
+          return false;
+        }
+      </script>
+    </body>
+    </html>
+  `;
+}
 
 // Function to generate letter viewer HTML
 function generateLetterViewerHTML(letterData) {
@@ -2181,6 +2687,18 @@ app.get('/api/download-pdf-unprotected/:uniqueId', (req, res) => {
   try {
     const { uniqueId } = req.params;
     
+    // Check for valid session
+    const cookies = req.headers.cookie || '';
+    const sessionMatch = cookies.match(/nicl_letter_session=([^;]+)/);
+    const sessionId = sessionMatch ? sessionMatch[1] : null;
+    
+    if (!validateSession(sessionId, uniqueId)) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized. Please authenticate first.'
+      });
+    }
+    
     // Find the letter data file to get PDF path
     const letterLinksDir = 'letter_links';
     let letterData = null;
@@ -2207,14 +2725,14 @@ app.get('/api/download-pdf-unprotected/:uniqueId', (req, res) => {
       });
     }
 
-    // Convert to unprotected PDF path
-    const unprotectedPdfPath = letterData.pdfPath.replace('/protected/', '/unprotected/');
-    const pdfPath = path.join('.', unprotectedPdfPath.replace(/^\//, ''));
+    // Use protected PDF path (already set to protected in generate_sms_links.py)
+    const pdfPath = path.join('.', letterData.pdfPath.replace(/^\//, ''));
     
     if (!fs.existsSync(pdfPath)) {
+      console.error(`[ERROR] PDF file not found: ${pdfPath}`);
       return res.status(404).json({
         success: false,
-        message: 'Unprotected PDF file not found on server'
+        message: 'PDF file not found on server'
       });
     }
 
@@ -2223,11 +2741,11 @@ app.get('/api/download-pdf-unprotected/:uniqueId', (req, res) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     
-    console.log(`[DEBUG] Serving unprotected PDF: ${pdfPath} as ${filename}`);
+    console.log(`[DEBUG] Serving protected PDF: ${pdfPath} as ${filename}`);
     fs.createReadStream(pdfPath).pipe(res);
 
   } catch (error) {
-    console.error('[ERROR] Failed to serve unprotected PDF:', error);
+    console.error('[ERROR] Failed to serve PDF:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to serve PDF',
