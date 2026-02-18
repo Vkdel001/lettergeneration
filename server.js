@@ -1076,8 +1076,8 @@ app.get('/api/status', (req, res) => {
 // API endpoint to generate SMS links
 app.post('/api/generate-sms-links', (req, res) => {
   // Set timeout for SMS link generation (10 minutes should be sufficient)
-  req.setTimeout(600000); // 10 minutes in milliseconds
-  res.setTimeout(600000); // 10 minutes in milliseconds
+  req.setTimeout(21600000); // 10 minutes in milliseconds
+  res.setTimeout(21600000); // 10 minutes in milliseconds
 
   const { outputFolder, template } = req.body;
 

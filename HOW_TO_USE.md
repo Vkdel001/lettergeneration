@@ -340,3 +340,226 @@ project/
 - **v1.2 Users**: All PDF templates now generate sequenced files (001_, 002_, etc.) for proper ordering
 - **v1.1 Users**: Ensure PyMuPDF is installed and Python symlink is created to prevent QR code corruption
 - **Legacy Users**: Clear old PDF folders to avoid mixing sequenced and non-sequenced files
+
+
+---
+
+## 📱 SMS Link Feature (NEW - December 2025)
+
+### Overview
+The SMS Link feature is an **additional functionality** that generates unique web links for each customer's arrears letter and creates SMS bulk files for third-party SMS sending. This feature works alongside existing PDF generation without disrupting current workflows.
+
+### Key Benefits
+- ✅ **Instant Delivery**: SMS reaches customers immediately (98% open rate vs 20% email)
+- ✅ **Cost Reduction**: No printing, postage, or email delivery costs
+- ✅ **Mobile Friendly**: Optimized letter viewer for smartphones
+- ✅ **Better Tracking**: Know who viewed their letter and when
+- ✅ **Secure Links**: 30-day expiry and access limits for security
+
+### How to Use SMS Links
+
+#### Step 1: Generate PDFs First
+1. Upload Excel file and generate PDFs as usual
+2. Wait for PDF generation to complete
+3. SMS Link section appears automatically
+
+#### Step 2: Generate SMS Links
+1. Click **"Generate SMS Links"** button in the SMS Link section
+2. System processes each customer record:
+   - Creates unique secure URL for each letter
+   - Generates shortened URL via TinyURL
+   - Saves letter data as JSON
+   - Creates SMS message text
+3. Wait for "Ready" status (usually 1-2 minutes for 1000 records)
+
+#### Step 3: Download SMS File
+1. Click **"Download SMS File"** button
+2. CSV file downloads automatically
+3. File format: `SMS_Batch_[Folder]_[Date].csv`
+
+#### Step 4: Send SMS (External)
+1. Import CSV into your SMS service provider
+2. Send bulk SMS to customers
+3. Customers receive SMS with short links
+
+#### Step 5: Customer Experience
+1. Customer clicks SMS link on mobile phone
+2. Opens mobile-friendly letter viewer in browser
+3. Can view letter, download PDF, or print
+4. Link expires after 30 days
+
+### SMS File Format
+
+The generated CSV file contains:
+
+```csv
+Mobile,Message,ShortURL,Policy,CustomerName,Status
+57123456,"Dear Mr Doe, your NICL arrears notice: https://tinyurl.com/abc123",https://tinyurl.com/abc123,00407/0094507,Mr John Doe,Ready
+57789012,"Dear Mrs Smith, your NICL arrears notice: https://tinyurl.com/def456",https://tinyurl.com/def456,00407/0094508,Mrs Jane Smith,Ready
+```
+
+**Columns:**
+- **Mobile**: Customer mobile number (from MOBILE_NO column)
+- **Message**: Complete SMS text with personalized greeting and link
+- **ShortURL**: Shortened URL for SMS (via TinyURL)
+- **Policy**: Policy number for reference
+- **CustomerName**: Customer name for verification
+- **Status**: Always "Ready" (for SMS provider compatibility)
+
+### Letter Viewer Features
+
+When customers click the SMS link, they see:
+
+- **Professional NICL branding** with logo and colors
+- **Complete arrears notice** with all policy details
+- **Policy information table** showing premium and arrears
+- **Download PDF button** to save letter locally
+- **Print button** for physical copy
+- **Expiry notice** showing link validity period
+- **Contact information** for customer support
+
+### Security Features
+
+#### Link Security
+- **Unique IDs**: Non-guessable 16-character identifiers
+- **Expiration**: 30-day automatic expiry
+- **Access Limits**: Maximum 10 views per link
+- **HTTPS Only**: Secure transmission required
+- **No Indexing**: Search engines blocked
+
+#### Data Protection
+- **Temporary Storage**: Letter data stored as JSON files
+- **Access Logging**: Track who viewed what and when
+- **Automatic Cleanup**: Expired letters can be purged
+- **No Personal Data in URLs**: Only unique IDs exposed
+
+### File Structure
+
+SMS Link data is stored in:
+
+```
+letter_links/
+├── output_sph_November2025/
+│   ├── abc123def456.json     # Letter 1 data
+│   ├── xyz789ghi012.json     # Letter 2 data
+│   └── sms_batch.csv         # SMS bulk file
+└── output_jph_November2025/
+    ├── def456abc123.json
+    └── sms_batch.csv
+```
+
+### Cost Analysis
+
+#### SMS Costs (Estimated)
+- **Bulk SMS**: ~MUR 0.50 - 1.00 per SMS
+- **1,500 customers**: ~MUR 750 - 1,500 per batch
+- **Monthly savings**: Eliminate printing/postage costs
+
+#### Infrastructure Costs
+- **Storage**: Minimal (JSON files, ~2KB each)
+- **Bandwidth**: Low (HTML pages, ~50KB each)
+- **URL Shortening**: Free (TinyURL)
+
+### Troubleshooting SMS Links
+
+**"Output folder not found"**
+- Generate PDFs first before creating SMS links
+- SMS links require existing PDF files to reference
+
+**"No mobile numbers found"**
+- Check Excel file has MOBILE_NO column
+- Verify mobile numbers are not empty or "NaN"
+- Ensure mobile numbers are in correct format
+
+**"URL shortening failed"**
+- Check internet connection
+- TinyURL API may be temporarily unavailable
+- System will use long URLs as fallback
+
+**"Letter not found" (Customer)**
+- Link may have expired (30 days)
+- Link may have been accessed too many times (10 views)
+- Check if letter data JSON file exists
+
+**"SMS file download failed"**
+- Ensure SMS links were generated successfully
+- Check browser download settings
+- Try refreshing the page and downloading again
+
+### Testing SMS Links
+
+To test the SMS link feature:
+
+```bash
+# Run the test script
+python test_sms_generation.py
+
+# Expected output:
+# [TEST] ✅ SUCCESS: SMS link generation test passed!
+# [TEST] Links generated: 2
+# [TEST] JSON files created: 2
+# [TEST] CSV files created: 1
+```
+
+### API Endpoints (For Developers)
+
+**Generate SMS Links:**
+```
+POST /api/generate-sms-links
+Body: { outputFolder: "output_sph_November2025", template: "SPH_Fresh.py" }
+Response: { success: true, linksGenerated: 1500, smsFileReady: true }
+```
+
+**Download SMS File:**
+```
+GET /api/download-sms-file/:outputFolder
+Response: CSV file download
+```
+
+**View Letter (Customer):**
+```
+GET /letter/:uniqueId
+Response: HTML letter viewer page
+```
+
+**Download PDF (Customer):**
+```
+GET /api/download-pdf/:uniqueId
+Response: PDF file download
+```
+
+### Integration with Existing Workflows
+
+The SMS Link feature integrates seamlessly:
+
+1. **Existing PDF Generation**: ✅ Unchanged, works as before
+2. **New SMS Option**: ✅ Additional step after PDF generation
+3. **Combine PDFs**: ✅ Still works for unprotected PDFs
+4. **Email Functionality**: ✅ Unchanged, can use both SMS and email
+5. **File Browser**: ✅ Still works for downloading individual PDFs
+
+**No disruption to existing processes - purely additive functionality.**
+
+### Best Practices
+
+1. **Always generate PDFs first** before creating SMS links
+2. **Test with small batch** (10-20 records) before full deployment
+3. **Verify mobile numbers** in Excel file before processing
+4. **Keep SMS messages short** (under 160 characters when possible)
+5. **Monitor link usage** to understand customer engagement
+6. **Clean up expired links** periodically to save storage space
+
+### Future Enhancements (Planned)
+
+- 📧 Email notifications when links are accessed
+- 📊 Analytics dashboard for link usage
+- 🔄 Automatic link renewal for active customers
+- 📱 SMS delivery integration (direct sending)
+- 🎨 Customizable letter viewer themes
+
+---
+
+**SMS Link Feature Status**: ✅ **IMPLEMENTED AND TESTED**  
+**Version**: 1.3 (December 2025)  
+**Test Results**: All tests passed successfully  
+**Production Ready**: Yes
