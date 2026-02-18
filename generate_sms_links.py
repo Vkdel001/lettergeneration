@@ -449,21 +449,61 @@ def generate_sms_links_for_folder(output_folder, template_type, base_url="https:
             long_url = f"{base_url}/letter/{unique_id}"
             short_url = create_short_url(long_url)
             
-            # Create SMS message
-            customer_title = row.get('Owner 1 Title', '')
-            customer_surname = row.get('Owner 1 Surname', '')
-            name_for_sms = f"{customer_title} {customer_surname}".strip() if customer_surname else letter_data['customerName']
+            # Extract customer details for new CSV format
+            customer_title = str(row.get('Owner 1 Title', '')).strip() if pd.notna(row.get('Owner 1 Title', '')) else ''
+            customer_first_name = str(row.get('Owner 1 First Name', '')).strip() if pd.notna(row.get('Owner 1 First Name', '')) else ''
+            customer_surname = str(row.get('Owner 1 Surname', '')).strip() if pd.notna(row.get('Owner 1 Surname', '')) else 'Unknown'
             
-            sms_text = f"Dear {name_for_sms}, your NICL arrears notice is ready. View: {short_url} Password: Your National ID (no spaces) Valid 30 days | Help: 602-3315"
+            # Build first name (Title + First Name)
+            first_name_combined = f"{customer_title} {customer_first_name}".strip() if customer_first_name else customer_title
+            if not first_name_combined:
+                first_name_combined = "Valued Client"
             
-            # Prepare SMS data
+            # Extract NIC - HARDCODED VALUE
+            nic = "1"  # Always use "1" as per requirement (not from Excel)
+            
+            # Extract arrears amount
+            arrears_amount = float(row.get('Arrears Amount', 0)) if pd.notna(row.get('Arrears Amount', 0)) else 0.0
+            arrears_formatted = f"MUR {arrears_amount:,.2f}"
+            
+            # Extract and format date
+            arrears_date_raw = row.get('Arrears Processing Date', '')
+            if arrears_date_raw and pd.notna(arrears_date_raw):
+                try:
+                    if isinstance(arrears_date_raw, (int, float)):
+                        date_obj = pd.to_datetime(arrears_date_raw, origin='1899-12-30', unit='D')
+                    else:
+                        date_obj = pd.to_datetime(arrears_date_raw, dayfirst=True)
+                    month_name = date_obj.strftime('%B')  # Full month name
+                    year = date_obj.strftime('%Y')        # 4-digit year
+                except:
+                    month_name = datetime.now().strftime('%B')
+                    year = datetime.now().strftime('%Y')
+            else:
+                month_name = datetime.now().strftime('%B')
+                year = datetime.now().strftime('%Y')
+            
+            # Determine policy type from template
+            policy_type_map = {
+                'SPH': 'Life',
+                'JPH': 'Life',
+                'MED_SPH': 'Health',
+                'MED_JPH': 'Health',
+                'Company': 'Company'
+            }
+            policy_type = policy_type_map.get(template_type, 'Life')
+            
+            # Create new SMS message format
+            sms_text = f"Valued Client, your {policy_type} Policy {policy_no} is in arrears for an amount of {arrears_formatted} as at {month_name} {year}. View Details : {short_url} Password: Your National ID. Thank you - NIC Team Tel 602 3315 for info."
+            
+            # Prepare SMS data with new format
             sms_data.append({
-                'Mobile': mobile,
-                'Message': sms_text,
-                'ShortURL': short_url,
-                'Policy': policy_no,
-                'CustomerName': letter_data['customerName'],
-                'Status': 'Ready'
+                'SN': index + 1,                    # Sequential number
+                'Surname': customer_surname,        # Last name only
+                'First Name': first_name_combined,  # Title + First Name
+                'NID': nic,                         # Hardcoded "1"
+                'Mobile No': mobile,                # Mobile number
+                'Message Text': sms_text            # New message format
             })
             
             letter_links.append({
